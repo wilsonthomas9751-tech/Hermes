@@ -1,0 +1,1339 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RulePack xmlns="xmlns://www.fortifysoftware.com/schema/rules"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:type="RulePack">
+  <RulePackID>CFML-OWASP-10-CUSTOM-RULES</RulePackID>
+  <SKU>SKU-CFML-OWASP-10-CUSTOM-RULES</SKU>
+  <Name><![CDATA[CFML OWASP Top 10:2021 Custom Rules]]></Name>
+  <Version>1.0</Version>
+  <Description><![CDATA[
+    Fortify SCA custom rules for ColdFusion/CFML codebases.
+    Mapped to OWASP Top 10:2021 categories A01-A10.
+    Uses universal/content rules since CFML is not a supported
+    language for structural/dataflow custom rules in Fortify SCA.
+
+    DEPLOYMENT:
+      Copy to: <SAST_INSTALL_DIR>/Core/config/customrules/
+      OR pass via: sourceanalyzer -rules CFML_OWASP_Top10_CustomRules.xml -scan <dir>
+
+    TEST IN ISOLATION:
+      sourceanalyzer -rules CFML_OWASP_Top10_CustomRules.xml \
+        -disable-default-rule-type DataflowSource \
+        -disable-default-rule-type DataflowSink \
+        -disable-default-rule-type Structural \
+        -scan /path/to/cfml/code/ -f results.fpr
+
+    LIMITATIONS:
+      - Content/Universal rules are pattern-based (regex). They cannot trace
+        taint flow, so false positives will occur.
+      - Fortify does NOT support CFML for DataflowSource/Sink/Characterization
+        or Structural custom rules. Only ContentRule and StructuralRule
+        language="universal" are available.
+      - True taint-flow analysis on CFML requires manual review, pen testing,
+        or a CFML-aware SAST tool alongside Fortify.
+  ]]></Description>
+  <Rules version="6.31">
+    <RuleDefinitions>
+
+      <!-- ================================================================
+           A01:2021 — BROKEN ACCESS CONTROL
+           ================================================================ -->
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A01-001</RuleID>
+        <VulnKingdom>Access Control</VulnKingdom>
+        <VulnCategory>Broken Access Control</VulnCategory>
+        <OWASP2021>A01</OWASP2021>
+        <DefaultSeverity>4.0</DefaultSeverity>
+        <Description><![CDATA[
+          A01:2021-Broken Access Control — Variable from URL, FORM, or CGI scope
+          used in a security-sensitive context without apparent authorization check.
+          These scopes carry untrusted user input; ensure access control is enforced
+          before using them to access resources or perform actions.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?m)
+          (?<![A-Za-z0-9_])
+          (?:URLEncodedFormat|URL|Get.URL|getURL|CGI\.\w+|FORM\.\w+|URL\.\w+|FORM\[)
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A01-002</RuleID>
+        <VulnKingdom>Access Control</VulnKingdom>
+        <VulnCategory>Broken Access Control</VulnCategory>
+        <OWASP2021>A01</OWASP2021>
+        <DefaultSeverity>3.5</DefaultSeverity>
+        <Description><![CDATA[
+          A01:2021-Broken Access Control — Page accesses session/user data
+          without an obvious cfprotect, cflogin, or custom authorization check.
+          Verify that authentication and authorization are enforced before
+          accessing protected resources.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*cfif\s+.*?(?:\bSESSION\b|\.username\b|\.loggedIn\b|\.role\b))
+          |
+          (<\s*cfset\s+.*?(?:\bSESSION\b|\.username\b|\.loggedIn\b|\.role\b))
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A01-003</RuleID>
+        <VulnKingdom>Access Control</VulnKingdom>
+        <VulnCategory>Insecure Direct Object Reference</VulnCategory>
+        <OWASP2021>A01</OWASP2021>
+        <DefaultSeverity>4.5</DefaultSeverity>
+        <Description><![CDATA[
+          A01:2021-Broken Access Control — URL/FORM parameter directly used in
+          cffile, cfdirectory, cfquery, or cfhttp operation without apparent
+          access control or input validation. This may enable IDOR attacks
+          where users access resources belonging to other users.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*(?:cffile|cfdirectory|cfquery|cfhttp)\b[^>]*>)
+          (?:(?!<\s*/\s*(?:cffile|cfdirectory|cfquery|cfhttp)\s*>).)*?
+          (?:URL\.\w+|FORM\.\w+|url\.|form\.)
+        ]]></Pattern>
+      </ContentRule>
+
+
+      <!-- ================================================================
+           A02:2021 — CRYPTOGRAPHIC FAILURES
+           ================================================================ -->
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A02-001</RuleID>
+        <VulnKingdom>Cryptographic Issues</VulnKingdom>
+        <VulnCategory>Hardcoded Cryptographic Key</VulnCategory>
+        <OWASP2021>A02</OWASP2021>
+        <DefaultSeverity>5.0</DefaultSeverity>
+        <Description><![CDATA[
+          A02:2021-Cryptographic Failures — Hardcoded encryption key, secret,
+          or password detected in CFML source code. Never embed secrets in source;
+          use environment variables, encrypted datasources, or a secrets manager.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?m)
+          (?<![A-Za-z0-9_])
+          (?:
+            encryption\s*\.\s*(?:key|password|seed)\s*=\s*["'][^"']{8,}["']
+          |
+            key\s*=\s*["'][A-Za-z0-9/+=]{16,}["']
+          |
+            secret\s*=\s*["'][^"']{8,}["']
+          |
+            cipher(?:\s+text)?\s*=\s*["'][^"']+["']
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A02-002</RuleID>
+        <VulnKingdom>Cryptographic Issues</VulnKingdom>
+        <VulnCategory>Use of Weak Cryptographic Algorithm</VulnCategory>
+        <OWASP2021>A02</OWASP2021>
+        <DefaultSeverity>4.0</DefaultSeverity>
+        <Description><![CDATA[
+          A02:2021-Cryptographic Failures — Weak or deprecated cryptographic
+          algorithm detected. MD5, SHA-1, DES, and RC4 are considered
+          cryptographically broken or weak and should not be used for
+          security-sensitive purposes. Use SHA-256+, AES-256, or Argon2.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)
+          (?:
+            \bhash(?:\s+text)?\s*=\s*["']?md5["']?
+          |
+            \bencrypt\s*\(\s*["']?md5["']?|
+            \bencrypt\s*\(\s*["']?sha1["']?|
+            \bencrypt\s*\(\s*["']?des["']?|
+            \bencrypt\s*\(\s*["']?rc4["']?
+          |
+            hash(?:\s+text)?\s*=\s*md5
+          |
+            hash(?:\s+text)?\s*=\s*sha1
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A02-003</RuleID>
+        <VulnKingdom>Cryptographic Issues</VulnKingdom>
+        <VulnCategory>Cleartext Storage of Password</VulnCategory>
+        <OWASP2021>A02</OWASP2021>
+        <DefaultSeverity>4.5</DefaultSeverity>
+        <Description><![CDATA[
+          A02:2021-Cryptographic Failures — Password or sensitive credential
+          appears to be stored or compared in cleartext. Passwords should always
+          be hashed with a strong algorithm (bcrypt, Argon2, PBKDF2) and salt
+          before storage. Verify that cfquery INSERT/UPDATE on password fields
+          uses proper hashing.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?:
+            (<\s*cfquery\b.*?>)
+            .*?
+            (?:password|passwd|pwd|secret|credential)
+            .*?
+            (?:<\s*cfqueryparam\s+.*?value\s*=\s*["'][^"']*?["'])
+          )
+          |
+          (?:password|passwd|pwd)\s*(?:==?|equals|eq)\s*["'][^"']+["']
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A02-004</RuleID>
+        <VulnKingdom>Cryptographic Issues</VulnKingdom>
+        <VulnCategory>Missing Encryption of Sensitive Data</VulnCategory>
+        <OWASP2021>A02</OWASP2021>
+        <DefaultSeverity>3.5</DefaultSeverity>
+        <Description><![CDATA[
+          A02:2021-Cryptographic Failures — Sensitive data (PII, financial data,
+          health data) appears to be processed without encryption. Verify that
+          data at rest and in transit is encrypted. Look for encrypt(), hash(),
+          or cfqueryparam usage when handling sensitive fields.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?:
+            (?:<\s*cfset\s+.*?\b(password|ssn|credit.?card|ccnum|patient|medical|pii)"
+            |<\s*cfset\s+.*?\b(password|ssn|credit.?card|ccnum)\b.*?=)
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+
+      <!-- ================================================================
+           A03:2021 — INJECTION
+           ================================================================ -->
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A03-001</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>SQL Injection</VulnCategory>
+        <OWASP2021>A03</OWASP2021>
+        <DefaultSeverity>4.5</DefaultSeverity>
+        <Description><![CDATA[
+          A03:2021-Injection — cfquery tag without cfqueryparam usage detected.
+          Any variable interpolated into a SQL string must use cfqueryparam to
+          ensure proper typing and prevent SQL injection. Replace string
+          concatenation with bound parameters.
+          BEFORE: SELECT * FROM users WHERE id = #url.userId#
+          AFTER:  SELECT * FROM users WHERE id = <cfqueryparam value="#url.userId#"
+                   cfsqltype="cf_sql_integer">
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*cfquery\b[^>]*>)
+          (?:(?!<\s*/cfquery\s*>).)*?
+          (?!\s*<\s*cfqueryparam\b)
+          (?:(?!<\s*/cfquery\s*>).)*?
+          (<\s*/cfquery\s*>)
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A03-002</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>SQL Injection</VulnCategory>
+        <OWASP2021>A03</OWASP2021>
+        <DefaultSeverity>4.5</DefaultSeverity>
+        <Description><![CDATA[
+          A03:2021-Injection — SQL query string appears to concatenate variables
+          (using #var# or & or +) inside a cfquery block. This is a strong
+          indicator of potential SQL injection. Replace all variable references
+          with cfqueryparam bound parameters.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*cfquery\b[^>]*>)
+          (?:(?!<\s*/cfquery\s*>).)*?
+          (?:
+            \#\w+\#    |
+            \+\s*\w+   |
+            &\s*\w+    |
+            \?\w+      |
+            \$\{?\w+\}?|
+            \$\{URL\.\w+\} |
+            \$\{FORM\.\w+\}
+          )
+          (?:(?!<\s*/cfquery\s*>).)*?
+          (<\s*/cfquery\s*>)
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A03-003</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Code Injection</VulnCategory>
+        <OWASP2021>A03</OWASP2021>
+        <DefaultSeverity>5.0</DefaultSeverity>
+        <Description><![CDATA[
+          A03:2021-Injection — evaluate(), de(), or inline() called with
+          potentially user-controlled input. These functions execute arbitrary
+          ColdFusion expressions and are equivalent to eval() in other languages.
+          Never pass user input to these functions. Use direct variable references
+          or structured data access instead.
+          BAD:  <cfset x = evaluate("url." & form.fieldName)>
+          GOOD: <cfset x = url[data][form.fieldName]>
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)
+          (?:
+            \bevaluate\s*\(
+          |
+            \bde\s*\(
+          |
+            \binline\s*\(
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A03-004</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Code Injection</VulnCategory>
+        <OWASP2021>A03</OWASP2021>
+        <DefaultSeverity>5.0</DefaultSeverity>
+        <Description><![CDATA[
+          A03:2021-Injection — evaluate(), de(), or inline() called with an
+          argument that references URL, FORM, CGI, COOKIE, or REQUEST scope
+          variables. This is a HIGH CONFIDENCE code injection / RCE finding.
+          These scopes carry untrusted user input; executing them as CFML
+          expressions allows arbitrary code execution on the server.
+          IMMEDIATE REMEDIATION REQUIRED.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (
+            \b(evaluate|de|inline)\s*\(
+          )
+          .*?
+          (
+            \b(?:URL|FORM|CGI|COOKIE|REQUEST|SESSION|APPLICATION)\b
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A03-005</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>OS Command Injection</VulnCategory>
+        <OWASP2021>A03</OWASP2021>
+        <DefaultSeverity>5.0</DefaultSeverity>
+        <Description><![CDATA[
+          A03:2021-Injection — cfexecute tag with a command attribute that
+          references URL, FORM, or CGI scope variables. This allows users to
+          execute arbitrary OS commands on the server. Never pass user input
+          directly to cfexecute. If command execution is required, use a strict
+          allowlist of permitted commands and validate all arguments.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*cfexecute\b[^>]*>)
+          (?:(?!<\s*/cfexecute\s*>).)*?
+          (?:URL\.\w+|FORM\.\w+|url\.|form\.|CGI\.\w+)
+          (?:(?!<\s*/cfexecute\s*>).)*?
+          (<\s*/cfexecute\s*>)
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A03-006</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Cross-Site Scripting (XSS)</VulnCategory>
+        <OWASP2021>A03</OWASP2021>
+        <DefaultSeverity>4.0</DefaultSeverity>
+        <Description><![CDATA[
+          A03:2021-Injection — Output of URL, FORM, CGI, or COOKIE scope
+          variables to HTML without apparent encoding. ColdFusion provides
+          encodeForHTML(), encodeForHTMLAttribute(), encodeForJavaScript(),
+          and encodeForURL() in the encodeFor* family. Always encode output
+          based on the context where it will appear.
+          <cfoutput>#url.searchTerm#</cfoutput>  <-- UNSAFE
+          <cfoutput>#encodeForHTML(url.searchTerm)#</cfoutput>  <-- SAFE
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?:
+            <\s*cfoutput\b[^>]*>
+            (?:(?!<\s*/cfoutput\s*>).)*?
+            (?:URL|FORM|CGI|COOKIE|REQUEST)\s*\[|
+            (?:#\s*(?:URL|FORM|CGI|COOKIE|REQUEST)\s*\.\w+#)
+          )
+          |
+          (?:
+            \bwriteOutput\s*\(\s*.*?(?:URL|FORM|CGI|COOKIE)\s*\[
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A03-007</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Cross-Site Scripting (XSS)</VulnCategory>
+        <OWASP2021>A03</OWASP2021>
+        <DefaultSeverity>3.5</DefaultSeverity>
+        <Description><![CDATA[
+          A03:2021-Injection — cfapplet, cfobject, or cfembed tag with dynamic
+          parameters derived from user input. These tags instantiate browser
+          plugins or Java applets and may be vectors for XSS or plugin-based
+          attacks. Validate and encode all dynamic parameters.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)
+          \b(?:cfapplet|cfobject|cfembed)\b.*?(?:URL\.\w+|FORM\.\w+)
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A03-008</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>XML External Entity (XXE)</VulnCategory>
+        <OWASP2021>A03</OWASP2021>
+        <DefaultSeverity>3.5</DefaultSeverity>
+        <Description><![CDATA[
+          A03:2021-Injection — XMLParse, XMLSearch, XMLTransform, or
+          XMLGetNode called with data that may originate from user input.
+          ColdFusion's XML parser may process external entities by default.
+          Disable external entity processing by setting the appropriate
+          parser features or use a allowlist for acceptable XML sources.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)
+          \b(?:XMLParse|XMLSearch|XMLTransform|XMLGetNode|XMLChildPos
+             |XMLCanonicalize|XMLFormat|XMLErr)
+          \s*\(
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A03-009</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Mail Header Injection</VulnCategory>
+        <OWASP2021>A03</OWASP2021>
+        <DefaultSeverity>3.5</DefaultSeverity>
+        <Description><![CDATA[
+          A03:2021-Injection — cfmail tag with to, from, subject, or other
+          header fields containing user-controlled input (URL/FORM scope).
+          Unvalidated input in email headers can enable header injection,
+          allowing attackers to inject additional recipients, CC/BCC fields,
+          or manipulate the email content. Validate and sanitize all user
+          input used in email headers.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*cfmail\b[^>]*>)
+          (?:(?!<\s*/cfmail\s*>).)*?
+          (?:URL\.\w+|FORM\.\w+|url\.|form\.|CGI\.\w+)
+          (?:(?!<\s*/cfmail\s*>).)*?
+          (<\s*/cfmail\s*>)
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A03-010</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Local File Inclusion</VulnCategory>
+        <OWASP2021>A03</OWASP2021>
+        <DefaultSeverity>4.5</DefaultSeverity>
+        <Description><![CDATA[
+          A03:2021-Injection — cfinclude, cfmodule, or cfsavecontent with a
+          template/path attribute derived from user input (URL/FORM scope).
+          This can enable Local File Inclusion (LFI) where attackers read
+          or execute arbitrary files on the server. Use a strict allowlist
+          of permitted templates and never pass user input directly to
+          file inclusion directives.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (
+            <\s*(?:cfinclude|cfmodule|cfsavecontent|cffile)\b[^>]*?(?:template|source|file|name)\s*=\s*["']
+          )
+          .*?
+          (?:
+            URL\.\w+|FORM\.\w+|url\.|form\.|CGI\.\w+
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+
+      <!-- ================================================================
+           A04:2021 — INSECURE DESIGN
+           ================================================================ -->
+      <!-- NOTE: A04 is a design-level category. Static analysis cannot
+           detect design flaws directly, but these rules flag CFML patterns
+           that commonly result from insecure design decisions. These are
+           "indicators" not "proofs" of insecure design. -->
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A04-001</RuleID>
+        <VulnKingdom>Authentication</VulnKingdom>
+        <VulnCategory>Insecure Password Reset</VulnCategory>
+        <OWASP2021>A04</OWASP2021>
+        <DefaultSeverity>3.5</DefaultSeverity>
+        <Description><![CDATA[
+          A04:2021-Insecure Design — Password reset / forgot-password flow
+          detected without apparent secure design patterns. Look for:
+          - Predictionable reset tokens (sequential IDs, timestamps)
+          - Email-based reset without rate limiting
+          - Reset tokens sent in URL parameters (exposed in logs/referers)
+          - No expiration on reset tokens
+          These patterns indicate a potentially insecure design that should
+          be reviewed. Use cryptographically random tokens with short TTLs
+          and store hashes of tokens server-side.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?i)(?:forgot.?password|reset.?password|password.?reset|change.?password
+             |recover.?account|account.?recovery)
+          .*
+          (?:
+            url\.\w+|form\.\w+|cgi\.\w+
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A04-002</RuleID>
+        <VulnKingdom>Authentication</VulnKingdom>
+        <VulnCategory>Missing Rate Limiting</VulnCategory>
+        <OWASP2021>A04</OWASP2021>
+        <DefaultSeverity>3.0</DefaultSeverity>
+        <Description><![CDATA[
+          A04:2021-Insecure Design — Authentication or login page detected
+          without apparent rate limiting, account lockout, or CAPTCHA.
+          Brute-force and credential-stuffing attacks are feasible without
+          these controls. Review whether the application implements:
+          - Failed attempt counters with progressive delays
+          - Account lockout after N failed attempts
+          - IP-based rate limiting
+          - CAPTCHA on login/reset endpoints
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?:<\s*cfif\s+.*?(?:FORM\.username|FORM\.password|url\.username|url\.password)))
+          |
+          (?:<\s*cfquery\b.*?>(?:SELECT.*?(?:password|passwd|pwd).*?FROM\s+.*?users.*?<\s*/cfquery\s*>))
+        ]]></Pattern>
+      </ContentRule>
+
+
+      <!-- ================================================================
+           A05:2021 — SECURITY MISCONFIGURATION
+           ================================================================ -->
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A05-001</RuleID>
+        <VulnKingdom>Configuration</VulnKingdom>
+        <VulnCategory>Debug Code in Production</VulnCategory>
+        <OWASP2021>A05</OWASP2021>
+        <DefaultSeverity>4.0</DefaultSeverity>
+        <Description><![CDATA[
+          A05:2021-Security Misconfiguration — Debug output, error disclosure,
+          or verbose logging detected in CFML code. Debug output can expose
+          stack traces, variable dumps, SQL queries, and internal paths to
+          attackers. Remove cfdebug, cfdump, writeDump, and verbose error
+          handling from production code. Use structured logging instead.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)
+          (?:
+            <\s*cfdump\s+
+          |
+            \bcdump\s*\( |
+            \bwriteDump\s*\( |
+            \bcfdump\s*\( |
+            \bshowError\s*\( |
+            \bdisplayMessage\s*\( |
+            \berror\s*=\s*["']?\s*(?:true|yes|on)\s*["']?
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A05-002</RuleID>
+        <VulnKingdom>Configuration</VulnKingdom>
+        <VulnCategory>Improper Error Handling</VulnCategory>
+        <OWASP2021>A05</OWASP2021>
+        <DefaultSeverity>3.5</DefaultSeverity>
+        <Description><![CDATA[
+          A05:2021-Security Misconfiguration — Detailed error messages, stack
+          traces, or debug information exposed to users via cferror, onError,
+          or custom error pages. Error messages should never expose internal
+          paths, SQL queries, stack traces, or variable contents. Log details
+          server-side and show generic messages to users.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?:
+            <\s*cferror\s+.*?type\s*=\s*["']execution["']
+          |
+            <\s*cfif\s+.*?\b(ERROR|exception|cfcatch)\b
+          |
+            \bcfcatch\s+type\s*=\s*["']any["']
+          |
+            \bonError\s*=\s*["'][^"']*["']
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A05-003</RuleID>
+        <VulnKingdom>Configuration</VulnKingdom>
+        <VulnCategory>Security Misconfiguration</VulnCategory>
+        <OWASP2021>A05</OWASP2021>
+        <DefaultSeverity>3.0</DefaultSeverity>
+        <Description><![CDATA[
+          A05:2021-Security Misconfiguration — Session or cookie configuration
+          appears to lack secure attributes. Verify that:
+          - cookies use secure=true (HTTPS only)
+          - cookies use httponly=true (prevent JavaScript access)
+          - cookies use SameSite attribute
+          - session timeout is appropriate
+          - session management uses secure tokens
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)
+          (?:
+            <\s*cfset\s+.*?\bcookie\s*\.\s*\w+\s*=
+          |
+            \bSESSION\.(?:set|timeout|cookiename)\s*
+          |
+            <\s*cfapplication\s+.*?\b
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A05-004</RuleID>
+        <VulnKingdom>Configuration</VulnKingdom>
+        <VulnCategory>Default Credentials</VulnCategory>
+        <OWASP2021>A05</OWASP2021>
+        <DefaultSeverity>5.0</DefaultSeverity>
+        <Description><![CDATA[
+          A05:2021-Security Misconfiguration — Default or weak credentials
+          detected for CFAdmin, datasources, or other CFML services.
+          ColdFusion ships with default admin passwords and sample
+          datasources that must be changed before production use.
+          Also check for hardcoded database passwords in Application.cfc
+          or datasource configuration that should be externalized.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?m)
+          (?:
+            cfadmin\s*\.?\s*(?:password|adminPassword|adminpass)\s*=
+          |
+            datasource\s*\.?\s*(?:password|dbpassword|db_pass)\s*=
+          |
+            (?:admin|root|sa|sys|system|demo|test|guest)\s*[:=]\s*["'][^"']{1,16}["']
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A05-005</RuleID>
+        <VulnKingdom>Configuration</VulnKingdom>
+        <VulnCategory>Missing Production Hardening</VulnCategory>
+        <OWASP2021>A05</OWASP2021>
+        <DefaultSeverity>3.0</DefaultSeverity>
+        <Description><![CDATA[
+          A05:2021-Security Misconfiguration — CFML application or server
+          configuration missing production security settings. Review:
+          - secure="true" on cfapplication / cookie configuration
+          - httponly="true" on session cookies
+          - session timeout configured appropriately
+          - DSN connection strings not logged or exposed
+          - debug mode disabled (coldfusion.admin.pp.expired.servertime)
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*cfapplication\b[^>]*>)
+          |
+          (<\s*cfsetting\s+.*?showdebugoutput\s*=\s*["']?\s*(?:true|yes|on)\s*["']?)
+        ]]></Pattern>
+      </ContentRule>
+
+
+      <!-- ================================================================
+           A06:2021 — VULNERABLE AND OUTDATED COMPONENTS
+           ================================================================ -->
+      <!-- NOTE: A06 cannot be detected by static analysis of CFML source
+           directly. These rules flag patterns that may indicate outdated
+           component usage or known-vulnerable patterns. True detection
+           requires dependency auditing (cfpm, composer, manually). -->
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A06-001</RuleID>
+        <VulnKingdom>Vulnerability</VulnKingdom>
+        <VulnCategory>Use of Outdated Component</VulnCategory>
+        <OWASP2021>A06</OWASP2021>
+        <DefaultSeverity>3.0</DefaultSeverity>
+        <Description><![CDATA[
+          A06:2021-Vulnerable and Outdated Components — References to specific
+          CFML framework versions, ColdFusion versions, or third-party
+          components that may be outdated or have known vulnerabilities.
+          Review the version referenced and compare against current
+          supported versions. Update to the latest patched release.
+          This is a heuristic flag; verify with component inventory.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?m)
+          (?i)(?:coldfusion\s*(\d+\.\d+)|cfml\s*(\d+\.\d+)
+              |fusion\s*(\d+\.\d+)|railo\s*(\d+\.\d+)|lucee\s*(\d+\.\d+))
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A06-002</RuleID>
+        <VulnKingdom>Vulnerability</VulnKingdom>
+        <VulnCategory>Use of Deprecated Component</VulnCategory>
+        <OWASP2021>A06</OWASP2021>
+        <DefaultSeverity>3.0</DefaultSeverity>
+        <Description><![CDATA[
+          A06:2021-Vulnerable and Outdated Components — Use of deprecated or
+          discontinued ColdFusion features that may have unpatched security
+          issues or be unsupported. Examples: flash forms, cfflash, cfgrid
+          (flash format), inline JavaScript in older CFML tags. These features
+          may rely on unsupported technologies (Flash Player) with known
+          vulnerabilities. Consider modern alternatives.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)
+          \b(?:cfflash|cfform\s+type\s*=\s*["']?flash|cfgrid\s+format\s*=\s*["']?flash
+             |cfmedia|cfobject\s+type\s*=\s*["']?activex)
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A06-003</RuleID>
+        <VulnKingdom>Vulnerability</VulnKingdom>
+        <VulnCategory>Code Inclusion from Untrusted Source</VulnCategory>
+        <OWASP2021>A06</OWASP2021>
+        <DefaultSeverity>4.5</DefaultSeverity>
+        <Description><![CDATA[
+          A06:2021-Vulnerable and Outdated Components — cfinclude, cfmodule, or
+          page include with a source/template from an external URL or network
+          path. Including code from external or untrusted sources can introduce
+          malicious code, outdated components, or supply-chain attacks.
+          All includes should reference local, version-controlled paths only.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*(?:cfinclude|cfmodule)\b[^>]*?(?:template|module)\s*=\s*["'])
+          .*?
+          (?:http://|https://|ftp://|\\\\)
+        ]]></Pattern>
+      </ContentRule>
+
+
+      <!-- ================================================================
+           A07:2021 — IDENTIFICATION AND AUTHENTICATION FAILURES
+           ================================================================ -->
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A07-001</RuleID>
+        <VulnKingdom>Authentication</VulnKingdom>
+        <VulnCategory>Hardcoded Credentials</VulnCategory>
+        <OWASP2021>A07</OWASP2021>
+        <DefaultSeverity>5.0</DefaultSeverity>
+        <Description><![CDATA[
+          A07:2021-Identification and Authentication Failures — Hardcoded
+          username/password or API key in authentication or login logic.
+          Credentials should never be embedded in source code. Use
+          environment variables, a secrets manager, or encrypted
+          configuration files with proper key management.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?:
+            (?:username|user|login|account|credentials|api[_-]?key|apikey)
+            \s*=\s*["'][^"']+["']
+          )
+          |
+          (?:
+            (?:password|passwd|pwd|secret|pass|api[_-]?secret)
+            \s*=\s*["'][^"']+["']
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A07-002</RuleID>
+        <VulnKingdom>Authentication</VulnKingdom>
+        <VulnCategory>Plaintext Credential Storage</VulnCategory>
+        <OWASP2021>A07</OWASP2021>
+        <DefaultSeverity>5.0</DefaultSeverity>
+        <Description><![CDATA[
+          A07:2021-Identification and Authentication Failures — Login logic
+          appears to compare passwords in plaintext (direct string comparison
+          without hashing). Passwords must be hashed with bcrypt, Argon2,
+          or PBKDF2 and compared as hash digests. Direct comparison of
+          plaintext passwords exposes them in memory, logs, and potential
+          timing attacks.
+          BAD:  <cfif form.password EQ dbPassword>
+          GOOD: <cfif hash(form.password, "SHA-256", salt) EQ dbPasswordHash>
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (
+            (?:cfif|if|eq|equals|==)\s*
+            .*?\b(password|passwd|pwd|secret)\b.*?\b(?:EQ|eq|equals|==)\s*
+            .*?\b(password|passwd|pwd|secret|dbPass)\b
+            |
+            (?:password|passwd|pwd)\s*=\s*form\.\w+\s*(?:and|&|AND)\s*
+            (?:verify|compare|check)\s*\(
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A07-003</RuleID>
+        <VulnKingdom>Authentication</VulnKingdom>
+        <VulnCategory>Session Fixation</VulnCategory>
+        <OWASP2021>A07</OWASP2021>
+        <DefaultSeverity>4.0</DefaultSeverity>
+        <Description><![CDATA[
+          A07:2021-Identification and Authentication Failures — Session
+          management after successful login does not appear to regenerate
+          the session ID or invalidate the previous session. Session fixation
+          attacks occur when an attacker sets a victim's session ID before
+          login and then hijacks the authenticated session. After login,
+          always call session invalidation + new session creation.
+          ColdFusion: use <cfset sessionInvalidate()> then re-initialize.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?i)(?:successful|valid|authenticated|login|signin|sign.in|auth.success)
+          .*
+          (?!
+            (?:sessionInvalidate|session\.invalidate|clear.*session|session.kill
+              |session.destroy|session_reset|sessionReset|new.session)
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A07-004</RuleID>
+        <VulnKingdom>Authentication</VulnKingdom>
+        <VulnCategory>Weak Password Policy</VulnCategory>
+        <OWASP2021>A07</OWASP2021>
+        <DefaultSeverity>3.0</DefaultSeverity>
+        <Description><![CDATA[
+          A07:2021-Identification and Authentication Failures — Password
+          validation logic does not appear to enforce minimum length,
+          complexity requirements, or breached-password checks. Weak
+          passwords are easily guessed or cracked. Enforce:
+          - Minimum 8-12 characters (NIST SP 800-63B)
+          - No composition rules (allow all characters)
+          - Check against breached password lists (HaveIBeenPwned API)
+          - Consider passphrases over complex passwords
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?:<\s*cfif\s+.*?(?:FORM\.(?:password|passwd|pwd|newPassword|confirmPassword)))
+          (?!
+            (?:len|length|len\s*\(|len\s*\(\s*form\.|reFind|reMatch|isValid|regex)
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A07-005</RuleID>
+        <VulnKingdom>Authentication</VulnKingdom>
+        <VulnCategory>Weak Password Reset Token</VulnCategory>
+        <OWASP2021>A07</OWASP2021>
+        <DefaultSeverity>4.0</DefaultSeverity>
+        <Description><![CDATA[
+          A07:2021-Identification and Authentication Failures — Password reset
+          token appears to be generated using predictable values (timestamp,
+          sequential ID, user ID, email). Reset tokens must be:
+          - Cryptographically random (use randomBytes() / generateRandomString())
+          - Sufficiently long (at least 128 bits of entropy)
+          - Stored hashed server-side (never plaintext in DB)
+          - Short-lived (15-60 minutes max)
+          - Single-use (invalidated after use)
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?i)(?:reset|forgot|recover).*?(?:token|key|code|link|hash)
+          .*
+          (?:
+            url\.\w+|form\.\w+|cgi\.\w+
+          |
+            createUUID|createDate|now|getTickCount|sequence|id\.\w+
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+
+      <!-- ================================================================
+           A08:2021 — SOFTWARE AND DATA INTEGRITY FAILURES
+           ================================================================ -->
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A08-001</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Insecure Deserialization</VulnCategory>
+        <OWASP2021>A08</OWASP2021>
+        <DefaultSeverity>4.5</DefaultSeverity>
+        <Description><![CDATA[
+          A08:2021-Software and Data Integrity Failures — cfobject, createObject,
+          or deserializeJSON/serializeJSON with untrusted input. Insecure
+          deserialization can lead to remote code execution when attackers
+          craft malicious serialized objects. Never deserialize untrusted
+          data without validation. For JSON, validate the structure against
+          a schema before processing. For Java/.NET object serialization,
+          avoid accepting serialized objects from untrusted sources.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (
+            \b(?:deserializeJSON|serializeJSON|evaluate|de|inline|createObject|cfobject|cfapplet)
+            \s*\(
+          )
+          .*?
+          (?:
+            URL\.\w+|FORM\.\w+|COOKIE\.\w+|REQUEST\.\w+|CGI\.\w+
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A08-002</RuleID>
+        <VulnKingdom>Integrity</VulnKingdom>
+        <VulnCategory>Unverified Software Update</VulnCategory>
+        <OWASP2021>A08</OWASP2021>
+        <DefaultSeverity>3.5</DefaultSeverity>
+        <Description><![CDATA[
+          A08:2021-Software and Data Integrity Failures — References to
+          third-party CFML packages, plugins, or components downloaded
+          from URLs without integrity verification. Software updates and
+          dependencies should be verified using checksums, signatures,
+          or hash comparison before installation/use. Check for:
+          - URL-based includes without hash verification
+          - Package downloads without checksum validation
+          - Dynamic code loading from remote sources
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?:
+            (?:cfinclude|cfmodule|cfhttp|guava|cdn)\.*?\b(?:src|template|file|url)\s*=\s*["']
+            .*?
+            (?:http://|https://|cdn\.|raw\.githubusercontent)
+          )
+          |
+          (?:
+            getURL|fileGetContents|fileRead|httpGet|httpPost|cfhttp.*?(?:http|https)://
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A08-003</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Trust of Client-Side Data</VulnCategory>
+        <OWASP2021>A08</OWASP2021>
+        <DefaultSeverity>4.0</DefaultSeverity>
+        <Description><![CDATA[
+          A08:2021-Software and Data Integrity Failures — Security decision
+          (authorization, validation, business logic) based on data from
+          URL, FORM, COOKIE, or other client-controlled scopes without
+          server-side verification. Client-side data can be modified by
+          attackers. All security decisions must be made server-side using
+          trusted data (session state, database lookups, signed tokens).
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?i)(?:cfif|if|when|switch)\s*\(\s*.*?\b(?:URL|FORM|COOKIE|CGI|REQUEST|SESSION)\b
+          .*?\b(?:role|permission|admin|access|authorized|authenticated|isAdmin|isLogged)
+        ]]></Pattern>
+      </ContentRule>
+
+
+      <!-- ================================================================
+           A09:2021 — SECURITY LOGGING AND MONITORING FAILURES
+           ================================================================ -->
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A09-001</RuleID>
+        <VulnKingdom>Logging and Monitoring</VulnKingdom>
+        <VulnCategory>Missing Security Logging</VulnCategory>
+        <OWASP2021>A09</OWASP2021>
+        <DefaultSeverity>3.5</DefaultSeverity>
+        <Description><![CDATA[
+          A09:2021-Security Logging and Monitoring Failures — Authentication
+          failure, authorization failure, or security-relevant event detected
+          without apparent logging. Security events that should be logged:
+          - Failed login attempts (with source IP, timestamp, username)
+          - Password change/reset events
+          - Privilege escalation attempts
+          - Access control denials
+          - Input validation failures
+          - Suspicious input patterns
+          Use writeLog(), cflog, or a logging framework. Do NOT log
+          passwords, session tokens, or PII in plaintext.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?i)(?:cfif|if|when)\s*\(\s*.*?\b(?:ERROR|failed|denied|invalid|unauthorized
+             |access.denied|not.allowed|forbidden|not.auth)
+          (?!
+            (?:writeLog|cflog|logMessage|Logger\.|log\.\w+|logError|log.warn|logger\.)
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A09-002</RuleID>
+        <VulnKingdom>Logging and Monitoring</VulnKingdom>
+        <VulnCategory>Sensitive Data in Logs</VulnCategory>
+        <OWASP2021>A09</OWASP2021>
+        <DefaultSeverity>4.0</DefaultSeverity>
+        <Description><![CDATA[
+          A09:2021-Security Logging and Monitoring Failures — writeLog, cflog,
+          or logging statement appears to log sensitive data (passwords,
+          session tokens, PII, credit card numbers, API keys). Sensitive
+          data must never be written to logs in plaintext. Use masked,
+          hashed, or redacted representations. Log only what is needed
+          for security monitoring and forensics.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (
+            \b(?:writeLog|cflog|logMessage|Logger\.\w+|log\.\w+)\s*\(
+          )
+          .*?
+          (?:
+            password|passwd|pwd|session|token|ssn|credit.?card|ccnum|api[_-]?key
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A09-003</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Log Injection</VulnCategory>
+        <OWASP2021>A09</OWASP2021>
+        <DefaultSeverity>3.0</DefaultSeverity>
+        <Description><![CDATA[
+          A09:2021-Security Logging and Monitoring Failures — User-controlled
+          input (URL/FORM scope) written directly to logs without sanitization.
+          Log injection (log forging) allows attackers to inject fake log
+          entries, corrupt log integrity, or inject CRLF characters to
+          split log lines. Sanitize or encode user input before logging.
+          Remove or encode newlines (CR, LF) and other control characters.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (
+            \b(?:writeLog|cflog|logMessage|Logger\.\w+|log\.\w+)\s*\(
+          )
+          .*?
+          (?:
+            URL\.\w+|FORM\.\w+|REQUEST\.\w+|COOKIE\.\w+|CGI\.\w+
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+
+      <!-- ================================================================
+           A10:2021 — SERVER-SIDE REQUEST FORGERY (SSRF)
+           ================================================================ -->
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A10-001</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Server-Side Request Forgery (SSRF)</VulnCategory>
+        <OWASP2021>A10</OWASP2021>
+        <DefaultSeverity>4.5</DefaultSeverity>
+        <Description><![CDATA[
+          A10:2021-Server-Side Request Forgery (SSRF) — cfhttp tag with a URL
+          attribute derived from user input (URL/FORM scope). This enables
+          SSRF where attackers can force the server to make requests to
+          internal services, cloud metadata endpoints (169.254.169.254),
+          or other restricted resources. Protect against SSRF by:
+          - Validating URLs against an allowlist of permitted domains
+          - Blocking access to internal/private IP ranges
+          - Blocking access to cloud metadata endpoints
+          - Using a URL parser to validate the scheme (http/https only)
+          - Never passing user input directly to cfhttp url attribute
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*cfhttp\b[^>]*?(?:url|get|post|site)\s*=\s*["'])
+          .*?
+          (?:
+            URL\.\w+|FORM\.\w+|url\.|form\.|CGI\.\w+|REQUEST\.\w+
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A10-002</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Server-Side Request Forgery (SSRF)</VulnCategory>
+        <OWASP2021>A10</OWASP2021>
+        <DefaultSeverity>4.5</DefaultSeverity>
+        <Description><![CDATA[
+          A10:2021-Server-Side Request Forgery (SSRF) — cfhttp URL may resolve
+          to internal/private network addresses. The URL appears to be
+          constructed from variables that could point to:
+          - localhost / 127.0.0.1 / ::1
+          - Private IP ranges (10.x, 172.16-31.x, 192.168.x)
+          - Cloud metadata endpoints (169.254.169.254)
+          - Internal hostnames / short names
+          Always validate the resolved URL against an allowlist and block
+          internal addresses before making the request.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*cfhttp\b[^>]*?(?:url|get|post|site)\s*=\s*["'])
+          .*?
+          (?:
+            localhost|127\.0\.0\.1|10\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.|169\.254\.169\.254
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A10-003</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Server-Side Request Forgery (SSRF)</VulnCategory>
+        <OWASP2021>A10</OWASP2021>
+        <DefaultSeverity>4.0</DefaultSeverity>
+        <Description><![CDATA[
+          A10:2021-Server-Side Request Forgery (SSRF) — cffile or cfdirectory
+          with a file path / directory attribute derived from user input.
+          If the path can be a URL (file://, http://, https://) or a UNC
+          path (\\server\share), this can enable SSRF or unauthorized
+          file access. Validate paths against an allowlist of permitted
+          directories and reject URL-based or network paths unless
+          explicitly required and properly secured.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (
+            <\s*(?:cffile|cfdirectory)\b[^>]*?(?:source|file|directory|path|name)\s*=\s*["']
+          )
+          .*?
+          (?:
+            URL\.\w+|FORM\.\w+|url\.|form\.|URL\[|FORM\[|REQUEST\[
+          |
+            (?:file://|ftp://|\\\\)
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-A10-004</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Server-Side Request Forgery (SSRF)</VulnCategory>
+        <OWASP2021>A10</OWASP2021>
+        <DefaultSeverity>3.5</DefaultSeverity>
+        <Description><![CDATA[
+          A10:2021-Server-Side Request Forgery (SSRF) — cfmail or SMTP
+          configuration with a server/host attribute derived from user
+          input. Mail relay SSRF can be used to reach internal mail servers,
+          scan internal networks via SMTP, or abuse the server as a mail
+          relay for spam. Use a fixed, internal-only mail relay and never
+          accept the SMTP host from user input.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (
+            <\s*cfmail\b[^>]*?(?:server|mailserver|host|smtp)\s*=\s*["']
+          )
+          .*?
+          (?:
+            URL\.\w+|FORM\.\w+|url\.|form\.|CGI\.\w+
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+
+      <!-- ================================================================
+           CROSS-CUTTING: CFML-SPECIFIC BAD PRACTICES
+           (These don't map to a single OWASP category but are highly
+            relevant to CFML security posture)
+           ================================================================ -->
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-CC-001</RuleID>
+        <VulnKingdom>Information Disclosure</VulnKingdom>
+        <VulnCategory>Debug Information Disclosure</VulnCategory>
+        <OWASP2021>A05</OWASP2021>
+        <DefaultSeverity>4.0</DefaultSeverity>
+        <Description><![CDATA[
+          Information Disclosure — cfdump or writeDump in code that may
+          execute in production. These tags dump full variable contents,
+          structures, queries, and scopes to the output — potentially
+          exposing session data, credentials, database results, and
+          internal application state. Remove all cfdump/writeDump calls
+          before deploying to production. Use proper logging instead.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)
+          (?:
+            <\s*cfdump\s+
+          |
+            \bcdump\s*\(
+          |
+            \bwriteDump\s*\(
+          |
+            \bwriteLog\s*\(\s*.*?(?:variables|scope|session|arguments|form|url)
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-CC-002</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Trust of Spoofable Header</VulnCategory>
+        <OWASP2021>A03</OWASP2021>
+        <DefaultSeverity>3.5</DefaultSeverity>
+        <Description><![CDATA[
+          Input Validation — CGI scope variables used for security decisions
+          or access control. CGI variables like CGI.HTTP_X_FORWARDED_FOR,
+          CGI.REMOTE_ADDR, CGI.HTTP_USER_AGENT can be spoofed by attackers
+          via HTTP headers. Never use these for authentication, authorization,
+          rate limiting, or fraud detection without additional validation.
+          Use the actual TCP connection remote address (not X-Forwarded-For
+          unless you control the proxy) and combine with other signals.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)
+          \bCGI\s*\.\s*(?:HTTP_X_FORWARDED_FOR|HTTP_X_REAL_IP|REMOTE_ADDR
+                      |HTTP_USER_AGENT|HTTP_REFERER|HTTP_HOST|X_FORWARDED)
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-CC-003</RuleID>
+        <VulnKingdom>Configuration</VulnKingdom>
+        <VulnCategory>Debug Output Enabled</VulnCategory>
+        <OWASP2021>A05</OWASP2021>
+        <DefaultSeverity>3.0</DefaultSeverity>
+        <Description><![CDATA[
+          Security Misconfiguration — cfsetting tag missing
+          showdebugoutput="false" or explicitly set to true. Debug output
+          in production exposes stack traces, variable dumps, and
+          internal application details. Set showdebugoutput="false" in
+          all production pages, or better, disable at the server level.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*cfsetting\s+.*?showdebugoutput\s*=\s*["']?[tT][rR][uU][eE]["']?.*?>)
+          |
+          (?!
+            (<\s*cfsetting\s+.*?showdebugoutput\s*=\s*["']?[Ff][Aa][Ll][Ss][Ee]["']?.*?>)
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-CC-004</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>HQL/SQL Injection</VulnCategory>
+        <OWASP2021>A03</OWASP2021>
+        <DefaultSeverity>4.5</DefaultSeverity>
+        <Description><![CDATA[
+          Injection — ColdFusion ORM (cfquery with ORM or Hibernate) without
+          parameter binding. Just like raw SQL, HQL queries must use
+          cfqueryparam or named parameters to prevent HQL injection.
+          String concatenation in HQL queries enables attackers to
+          manipulate the query structure.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*cfquery\b[^>]*?(?:ORM|orm|hibernate|HQL|hql)\b[^>]*>)
+          (?:(?!<\s*/cfquery\s*>).)*?
+          (?!\s*<\s*cfqueryparam\b)
+          (?:(?!<\s*/cfquery\s*>).)*?
+          (<\s*/cfquery\s*>)
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-CC-005</RuleID>
+        <VulnKingdom>Configuration</VulnKingdom>
+        <VulnCategory>Insecure Cookie</VulnCategory>
+        <OWASP2021>A05</OWASP2021>
+        <DefaultSeverity>3.5</DefaultSeverity>
+        <Description><![CDATA[
+          Security Misconfiguration — Cookie or session cookie configured
+          without secure="true" attribute. Session cookies transported
+          over HTTP (without secure flag) can be intercepted via network
+          sniffing or MITM attacks. Always set secure="true" on session
+          cookies and ensure the entire site uses HTTPS. Also verify
+          httponly="true" to prevent JavaScript access (XSS cookie theft).
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)
+          (?:
+            <\s*cfcookie\s+[^>]*?\bsecure\s*=\s*["']?[Ff][Aa][Ll][Ss][Ee]["']?
+          |
+            \bcookie\s*\.\s*\w+\s*=\s*["'].*?["']
+            (?!
+              (?:secure|httponly|samesite)\s*=\s*["']?[Tt][Rr][Uu][EeE]["']?
+            )
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-CC-006</RuleID>
+        <VulnKingdom>Input Validation and Representation</VulnKingdom>
+        <VulnCategory>Unrestricted File Upload</VulnCategory>
+        <OWASP2021>A01</OWASP2021>
+        <DefaultSeverity>4.5</DefaultSeverity>
+        <Description><![CDATA[
+          Broken Access Control / Injection — cffile with action="uploadAll"
+          or action="upload" without apparent validation of:
+          - File type / MIME type (accept attribute)
+          - File extension allowlist
+          - File size limits
+          - Upload destination (must be outside webroot or have execution disabled)
+          - Original filename (sanitize to prevent path traversal)
+          Unrestricted file upload enables attackers to upload and execute
+          malicious files (CFML templates, shell scripts, executables) on
+          the server. Validate all three: type, name, and destination.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (<\s*cffile\s+action\s*=\s*["']upload["'][^>]*>)
+          (?:(?!<\s*/cffile\s*>).)*?
+          (?!
+            (?:accept|extension|nameconflict|destination|mode|attributes)\s*=\s*["']
+          )
+        ]]></Pattern>
+      </ContentRule>
+
+      <ContentRule formatVersion="6.31" language="universal">
+        <RuleID>CFML-CC-007</RuleID>
+        <VulnKingdom>Cryptographic Issues</VulnKingdom>
+        <VulnCategory>Insecure Client Variable Storage</VulnCategory>
+        <OWASP2021>A02</OWASP2021>
+        <DefaultSeverity>3.0</DefaultSeverity>
+        <Description><![CDATA[
+          Cryptographic Failures — CLIENT scope variables stored without
+          encryption. ColdFusion's CLIENT scope can persist to cookies,
+          registry, or database depending on configuration. If client
+          variables contain sensitive data (user ID, roles, preferences)
+          and are not encrypted, they can be read or modified by attackers.
+          Use CLIENT variables only for non-sensitive data, or enable
+          client variable encryption and sign with a strong key.
+        ]]></Description>
+        <Pattern><![CDATA[
+          (?ix)(?s)
+          (?i)(?:<\s*cfset\s+.*?\bCLIENT\s*\.)
+        ]]></Pattern>
+      </ContentRule>
+
+    </RuleDefinitions>
+  </Rules>
+</RulePack>

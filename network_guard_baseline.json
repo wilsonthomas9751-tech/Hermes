@@ -1,0 +1,183 @@
+{
+  "known_hosts": {
+    "192.168.0.1": {
+      "mac": "68:ff:7b:22:cc:a9",
+      "first_seen": "2026-09-16T14:53:03.488157+00:00",
+      "last_seen": "2026-09-16T14:53:03.488163+00:00",
+      "note": "TP-Link router/gateway",
+      "vendor": "TP-LINK TECHNOLOGIES CO.,LTD."
+    },
+    "192.168.0.217": {
+      "mac": "1c:4d:66:9f:11:c7",
+      "first_seen": "2026-09-16T14:53:03.546412+00:00",
+      "last_seen": "2026-09-16T14:53:03.546442+00:00",
+      "note": "This Hermes server",
+      "vendor": "Amazon Technologies Inc."
+    },
+    "192.168.0.189": {
+      "mac": "d8:c0:a6:84:b4:45",
+      "first_seen": "2026-09-16T14:54:32.362729+00:00",
+      "last_seen": "2026-09-16T14:54:32.362761+00:00",
+      "note": "AzureWave WiFi device",
+      "vendor": "AzureWave Technology Inc."
+    },
+    "192.168.0.175": {
+      "mac": "fc:b0:de:20:84:c7",
+      "first_seen": "2026-09-16T16:16:57.374252+00:00",
+      "last_seen": "2026-09-16T16:16:57.374266+00:00",
+      "note": "GameGreenPC",
+      "vendor": "CLOUD NETWORK TECHNOLOGY SINGAPORE PTE. LTD."
+    },
+    "192.168.0.118": {
+      "mac": "4c:b0:4a:ba:23:72",
+      "first_seen": "2026-09-16T17:49:21.781907+00:00",
+      "last_seen": "2026-09-16T17:49:21.781938+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Intel Corporate"
+    },
+    "192.168.0.121": {
+      "mac": "c4:4f:33:89:bc:6b",
+      "first_seen": "2026-09-16T17:49:21.840736+00:00",
+      "last_seen": "2026-09-16T17:49:21.840766+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Espressif Inc."
+    },
+    "192.168.0.125": {
+      "mac": "de:61:af:46:40:a3",
+      "first_seen": "2026-09-16T17:49:21.899736+00:00",
+      "last_seen": "2026-09-16T17:49:21.899767+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Unknown"
+    },
+    "192.168.0.127": {
+      "mac": "02:47:66:66:53:e7",
+      "first_seen": "2026-09-16T17:49:21.957881+00:00",
+      "last_seen": "2026-09-16T17:49:21.957924+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Unknown"
+    },
+    "192.168.0.129": {
+      "mac": "bc:24:11:3b:1f:97",
+      "first_seen": "2026-09-16T17:49:22.017372+00:00",
+      "last_seen": "2026-09-16T17:49:22.017401+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Proxmox Server Solutions GmbH"
+    },
+    "192.168.0.140": {
+      "mac": "74:a7:ea:69:1b:d6",
+      "first_seen": "2026-09-16T17:49:22.075393+00:00",
+      "last_seen": "2026-09-16T17:49:22.075423+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Amazon Technologies Inc."
+    },
+    "192.168.0.141": {
+      "mac": "bc:24:11:41:a8:26",
+      "first_seen": "2026-09-16T17:49:22.133807+00:00",
+      "last_seen": "2026-09-16T17:49:22.133838+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Proxmox Server Solutions GmbH"
+    },
+    "192.168.0.148": {
+      "mac": "c4:4f:33:8a:99:1e",
+      "first_seen": "2026-09-16T17:49:22.192200+00:00",
+      "last_seen": "2026-09-16T17:49:22.192230+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Espressif Inc."
+    },
+    "192.168.0.153": {
+      "mac": "60:01:94:cb:f8:ed",
+      "first_seen": "2026-09-16T17:49:22.250755+00:00",
+      "last_seen": "2026-09-16T17:49:22.250786+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Espressif Inc."
+    },
+    "192.168.0.156": {
+      "mac": "bc:24:11:5e:ca:57",
+      "first_seen": "2026-09-16T17:49:22.309162+00:00",
+      "last_seen": "2026-09-16T17:49:22.309193+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Proxmox Server Solutions GmbH"
+    },
+    "192.168.0.162": {
+      "mac": "40:a8:f0:65:e2:d1",
+      "first_seen": "2026-09-16T17:49:22.367849+00:00",
+      "last_seen": "2026-09-16T17:49:22.367880+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Hewlett Packard"
+    },
+    "192.168.0.174": {
+      "mac": "c4:4f:33:89:ba:6e",
+      "first_seen": "2026-09-16T17:49:22.426968+00:00",
+      "last_seen": "2026-09-16T17:49:22.426999+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Espressif Inc."
+    },
+    "192.168.0.179": {
+      "mac": "6c:f2:d8:13:00:19",
+      "first_seen": "2026-09-16T17:49:22.486164+00:00",
+      "last_seen": "2026-09-16T17:49:22.486195+00:00",
+      "note": "nmap-discovered",
+      "vendor": "CANON INC."
+    },
+    "192.168.0.184": {
+      "mac": "4e:d1:c9:a5:17:d6",
+      "first_seen": "2026-09-16T17:49:22.547734+00:00",
+      "last_seen": "2026-09-16T17:49:22.547766+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Unknown"
+    },
+    "192.168.0.190": {
+      "mac": "1c:98:c1:ee:71:29",
+      "first_seen": "2026-09-16T17:49:22.608853+00:00",
+      "last_seen": "2026-09-16T17:49:22.608884+00:00",
+      "note": "nmap-discovered",
+      "vendor": "CLOUD NETWORK TECHNOLOGY SINGAPORE PTE. LTD."
+    },
+    "192.168.0.201": {
+      "mac": "98:48:27:e7:45:19",
+      "first_seen": "2026-09-16T17:49:22.667521+00:00",
+      "last_seen": "2026-09-16T17:49:22.667551+00:00",
+      "note": "nmap-discovered",
+      "vendor": "TP-LINK TECHNOLOGIES CO.,LTD."
+    },
+    "192.168.0.207": {
+      "mac": "62:17:55:cc:6d:29",
+      "first_seen": "2026-09-16T17:49:22.726468+00:00",
+      "last_seen": "2026-09-16T17:49:22.726499+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Unknown"
+    },
+    "192.168.0.208": {
+      "mac": "68:09:47:68:c4:90",
+      "first_seen": "2026-09-16T17:49:22.785391+00:00",
+      "last_seen": "2026-09-16T17:49:22.785422+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Espressif Inc."
+    },
+    "192.168.0.225": {
+      "mac": "unknown",
+      "first_seen": "2026-09-16T17:49:22.845172+00:00",
+      "last_seen": "2026-09-16T17:49:22.845203+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Unknown"
+    },
+    "192.168.0.226": {
+      "mac": "0c:91:60:6e:e1:f2",
+      "first_seen": "2026-09-16T17:49:22.912802+00:00",
+      "last_seen": "2026-09-16T17:49:22.912832+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Hui Zhou Gaoshengda Technology Co.,LTD"
+    },
+    "192.168.0.238": {
+      "mac": "bc:24:11:1c:88:86",
+      "first_seen": "2026-09-16T17:49:22.972202+00:00",
+      "last_seen": "2026-09-16T17:49:22.972232+00:00",
+      "note": "nmap-discovered",
+      "vendor": "Proxmox Server Solutions GmbH"
+    }
+  },
+  "created_at": "2026-09-16T14:53:03.487898+00:00",
+  "last_updated": "2026-09-16T17:49:22.972242+00:00",
+  "notes": "",
+  "version": 1
+}

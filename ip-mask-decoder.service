@@ -1,0 +1,27 @@
+[Unit]
+Description=IP Mask Decoder — decrypts incoming masked packets
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/home/hermes/ip-mask-decoder.conf
+ExecStart=/usr/bin/python3 /home/hermes/ip_mask.py capture \
+    --priv-key ${PRIV_KEY_PATH} \
+    --ec \
+    --host ${HOST_IP}
+User=root
+Group=root
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ip-mask-decoder
+
+# Security hardening (optional, tighten as needed)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/home/hermes/keys
+
+[Install]
+WantedBy=multi-user.target

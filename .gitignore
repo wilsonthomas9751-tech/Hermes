@@ -1,0 +1,24 @@
+# Personal & security
+.bashrc
+.bash_logout
+.profile
+.ssh/
+.gitconfig
+
+# Local state / caches
+.cache/
+.config/
+.hermes/
+.local/
+.npm/
+__pycache__/
+*.swp
+
+# Generated / duplicates
+*.log
+*_source.txt
+network_guard_oui.json
+
+# OS files
+.DS_Store
+Thumbs.db

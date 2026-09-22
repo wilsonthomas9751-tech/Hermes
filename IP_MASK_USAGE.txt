@@ -1,0 +1,214 @@
+IP MASKING TOOL — User Guide
+================================================================================
+File: /home/hermes/ip_mask.py
+Copy: /home/hermes/ip_mask_source.txt  (full source code)
+
+What it does:
+  Hides the real source IP address inside a raw IP packet by:
+  1. Putting a DECOY IP in the packet's IP header (what network observers see)
+  2. Encrypting the REAL IP and putting it in the packet payload
+  3. Using protocol 253 (experimental) so scanners ignore it
+
+  Only the receiver with the private key can decrypt the payload and learn
+  the real IP. Everyone else sees only the decoy.
+
+================================================================================
+PREREQUISITES
+================================================================================
+
+Python 3.13+ with the "cryptography" library:
+  python3 -m pip install --user cryptography
+
+Raw socket sending/capturing requires root or CAP_NET_RAW:
+  sudo python3 ip_mask.py ...
+
+Building packets and saving to pcap does NOT need root.
+
+================================================================================
+SETUP — Generate Keys (run on the RECEIVER machine)
+================================================================================
+
+  python3 ip_mask.py generate-keys --type ec --out ./keys
+
+Outputs:
+  ./keys/private.pem   ← KEEP SECRET (receiver only)
+  ./keys/public.pem    ← Distribute to all senders
+
+Key types:
+  --type ec    Elliptic Curve (P-256), faster, smaller packets (~97 bytes payload)
+  --type rsa   RSA 2048, larger packets (256 bytes payload)
+
+================================================================================
+SENDER — Encrypt and Send
+================================================================================
+
+Option A — Build and send live (needs root/CAP_NET_RAW):
+  sudo python3 ip_mask.py send \
+      --dst 10.0.0.2 \
+      --decoy 10.99.99.99 \
+      --real-ip 192.168.1.42 \
+      --pub-key ./keys/public.pem \
+      --iface eth0 \
+      --ec
+
+Options:
+  --dst       Destination IP (receiver's IP)
+  --decoy     Fake source IP (what observers see in the header)
+  --real-ip   Actual source IP you want to hide (encrypted in payload)
+  --pub-key   Receiver's public key (PEM file)
+  --iface     Network interface (e.g. eth0, ens192) — optional
+  --ec        Use EC/ECIES mode (default is RSA)
+  --pcap      Also save a copy to a pcap file (optional)
+
+Option B — Build only (no root needed, prints hex):
+  python3 ip_mask.py build \
+      --dst 10.0.0.2 \
+      --decoy 10.99.99.99 \
+      --real-ip 192.168.1.42 \
+      --pub-key ./keys/public.pem \
+      --ec \
+      --pcap built.pcap
+
+Use --pcap to also save the built packet to a file for later replay.
+
+Option C — Save to pcap for later replay (no root needed):
+  python3 ip_mask.py save \
+      --dst 10.0.0.2 \
+      --decoy 10.99.99.99 \
+      --real-ip 192.168.1.42 \
+      --pub-key ./keys/public.pem \
+      --out packets.pcap \
+      --count 5 \
+      --decoy-pool "10.99.99.99,10.88.88.88,172.16.0.1" \
+      --ec
+
+Options for save:
+  --out         Output pcap file path (required)
+  --count       Number of packets to generate (default 1)
+  --decoy-pool  Comma-separated list of decoy IPs (rotates randomly per packet)
+                If omitted, all packets use the same --decoy IP.
+
+Replay the pcap later (on a machine with raw socket access):
+  sudo tcpreplay -i eth0 packets.pcap
+
+  Or with scapy:
+  python3 -c "from scapy.all import *; sendp(rdpcap('packets.pcap'), iface='eth0')"
+
+================================================================================
+RECEIVER — Capture and Decrypt
+================================================================================
+
+  sudo python3 ip_mask.py capture \
+      --priv-key ./keys/private.pem \
+      --host 10.0.0.2 \
+      --iface eth0 \
+      --ec
+
+Options:
+  --priv-key   Your private key (PEM file) — required
+  --host       Your host IP to bind to (optional, default 0.0.0.0)
+  --iface      Interface to listen on (optional)
+  --ec         Use ECIES mode (must match what sender used)
+
+The receiver prints each decrypted packet:
+  [DECRYPTED] 14:23:01
+    Decoy src: 10.99.99.99 → Dst: 10.0.0.2
+    Real IP:   192.168.1.42  (via ECIES)
+    Payload:   04a9e2cf...
+
+Press Ctrl-C to stop.
+
+================================================================================
+HOW AN OBSERVER SEES THE TRAFFIC
+================================================================================
+
+An observer running tcpdump or Wireshark sees:
+  IP 10.99.99.99 → 10.0.0.2  proto=253  length=118
+
+  - Source IP is the decoy (not the real sender)
+  - Protocol 253 is "Experimental" — most tools skip it
+  - Payload is random-looking bytes (no IP pattern visible)
+  - No indication that an IP address is hidden inside
+
+Only the receiver with the private key can extract the real IP.
+
+================================================================================
+ENCRYPTION DETAILS
+================================================================================
+
+Payload format:
+  [1 byte version] [encrypted data]
+
+  Version 1 (RSA):     256 bytes encrypted IP
+  Version 2 (ECIES):   ~97 bytes (ephemeral pubkey + nonce + ciphertext + tag)
+  Version 3 (Symmetric): 32 bytes for IPv4, 60 bytes for IPv6
+
+The receiver reads the version byte and decrypts accordingly. Version 3
+(symmetric) requires a shared AES key instead of a private key — not
+currently supported in capture mode.
+
+================================================================================
+EXAMPLE WORKFLOW
+================================================================================
+
+1. On the receiver machine:
+   $ python3 ip_mask.py generate-keys --type ec --out ./keys
+   $ ls ./keys/
+   private.pem  public.pem
+
+2. Copy public.pem to the sender machine.
+
+3. On the sender machine (build + save to pcap):
+   $ python3 ip_mask.py save \
+       --dst 10.0.0.2 \
+       --decoy 10.99.99.99 \
+       --real-ip 192.168.1.42 \
+       --pub-key ./keys/public.pem \
+       --out msg.pcap \
+       --count 1 \
+       --ec
+
+4. Transfer msg.pcap to a machine connected to the receiver's network
+   (or any machine with raw socket access on the path).
+
+5. Replay the packet:
+   $ sudo tcpreplay -i eth0 msg.pcap
+
+6. On the receiver machine, capture and decrypt:
+   $ sudo python3 ip_mask.py capture \
+       --priv-key ./keys/private.pem \
+       --host 10.0.0.2 \
+       --ec
+
+   Output:
+   [DECRYPTED] 14:23:01
+     Decoy src: 10.99.99.99 → Dst: 10.0.0.2
+     Real IP:   192.168.1.42  (via ECIES)
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+"Permission denied" on send/capture:
+  → Need root or CAP_NET_RAW. Use sudo, or run on a machine with the cap.
+
+"Unknown version N" on decrypt:
+  → Sender and receiver must agree on mode (--ec or not). Check both sides.
+
+"Packet too short" on decrypt:
+  → Packet was truncated or corrupted in transit. Check the pcap or network.
+
+No packets captured:
+  → Check that --host matches the receiver's IP, or try without --host.
+  → Protocol 253 packets may be dropped by some firewalls/ routers.
+  → Try tcpdump -i eth0 'proto 253' to verify packets arrive.
+
+"File not found" on --pub-key or --priv-key:
+  → Use absolute paths or ensure you're in the correct directory.
+
+================================================================================
+FILES
+================================================================================
+
+/ip_mask.py              Main tool (executable Python script)
+/ip_mask_source.txt      Full source code copy

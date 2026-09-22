@@ -1,0 +1,417 @@
+IP MASKING TOOL — Windows Edition User Guide
+================================================================================
+Files:
+  ip_mask_windows.py    Main tool (encryption + packet build + send/capture)
+  ip_mask_service.py    Windows Service wrapper (auto-start background capture)
+  ip_mask_windows_source.txt   Full source code copy
+  ip_mask_service_source.txt   Service script source code copy
+
+What it does:
+  Hides the real source IP inside a raw IP packet by:
+  1. Putting a DECOY IP in the packet's IP header (what network observers see)
+  2. Encrypting the REAL IP and putting it in the packet payload
+  3. Using protocol 253 (experimental) so scanners ignore it
+
+  Only the receiver with the private key can decrypt the payload and learn
+  the real IP. Everyone else sees only the decoy.
+
+================================================================================
+PREREQUISITES — Windows
+================================================================================
+
+1. Python 3.7+ installed from python.org (add to PATH during install).
+
+2. Install the cryptography library:
+     pip install cryptography
+
+3. For SENDING and CAPTURING packets on Windows, you also need:
+
+   a) Npcap (packet capture driver):
+      Download and install from: https://npcap.com/#install
+      - Run the installer as Administrator
+      - Check "Install Npcap in WinPcap API-compatible Mode" (for scapy compat)
+      - Check "Install Npcap Loopback Adapter" (if you want to capture on localhost)
+
+   b) Scapy (Python packet manipulation library):
+      pip install scapy
+
+   c) Run your Python scripts as ADMINISTRATOR (right-click → Run as administrator,
+      or run your terminal as Administrator). Raw packet access requires admin.
+
+   NOTE: Building packets, saving to pcap, and generating keys do NOT need admin
+   or Npcap. Only send and capture do.
+
+================================================================================
+SETUP — Generate Keys (run on the RECEIVER machine)
+================================================================================
+
+  python ip_mask_windows.py generate-keys --type ec --out .\keys
+
+  Options:
+    --type ec    Elliptic Curve (P-256), faster, smaller packets
+    --type rsa   RSA 2048, larger packets (256 bytes payload)
+    --out        Output directory (default: ./keys)
+
+  Outputs:
+    .\keys\private.pem   ← KEEP SECRET (receiver only)
+    .\keys\public.pem    ← Distribute to all senders
+
+================================================================================
+SENDER — Encrypt and Send
+================================================================================
+
+Option A — Send live via Npcap (Windows, requires admin + Npcap):
+  python ip_mask_windows.py send ^
+      --dst 10.0.0.2 ^
+      --decoy 10.99.99.99 ^
+      --real-ip 192.168.1.42 ^
+      --pub-key .\keys\public.pem ^
+      --iface Ethernet ^
+      --ec
+
+  Options:
+    --dst       Destination IP (receiver's IP)
+    --decoy     Fake source IP (what observers see)
+    --real-ip   Actual source IP to hide (encrypted in payload)
+    --pub-key   Receiver's public key (PEM file)
+    --iface     Network interface name (e.g. "Ethernet", "Wi-Fi", "Local Area Connection")
+    --ec        Use ECIES mode (default is RSA)
+    --pcap      Also save a copy to a pcap file (optional)
+
+  To find your interface name, run:
+    python -c "from scapy.all import conf; print([iface['name'] for iface in conf.ifaces.values()])"
+
+  Or just use Wireshark — it shows interface names.
+
+Option B — Build only (no send, no admin needed, prints hex):
+  python ip_mask_windows.py build ^
+      --dst 10.0.0.2 ^
+      --decoy 10.99.99.99 ^
+      --real-ip 192.168.1.42 ^
+      --pub-key .\keys\public.pem ^
+      --ec ^
+      --pcap built.pcap
+
+  Use --pcap to also save the built packet to a file for later replay.
+
+Option C — Save to pcap for later replay (no admin needed):
+  python ip_mask_windows.py save ^
+      --dst 10.0.0.2 ^
+      --decoy 10.99.99.99 ^
+      --real-ip 192.168.1.42 ^
+      --pub-key .\keys\public.pem ^
+      --out packets.pcap ^
+      --count 5 ^
+      --decoy-pool "10.99.99.99,10.88.88.88,172.16.0.1" ^
+      --ec
+
+  Options for save:
+    --out         Output pcap file path (required)
+    --count       Number of packets to generate (default 1)
+    --decoy-pool  Comma-separated list of decoy IPs (rotates randomly per packet)
+                  If omitted, all packets use the same --decoy IP.
+
+  Replay the pcap later:
+    - Use tcpreplay for Windows (if installed):
+        tcpreplay.exe -i Ethernet packets.pcap
+    - Use Python + scapy:
+        python -c "from scapy.all import *; sendp(rdpcap('packets.pcap'), iface='Ethernet')"
+    - Use Wireshark's "Inject" feature (if available)
+    - Transfer the pcap to a Linux machine and use tcpreplay there
+
+================================================================================
+RECEIVER — Capture and Decrypt
+================================================================================
+
+Option A — Interactive capture (run in a console window):
+  python ip_mask_windows.py capture ^
+      --priv-key .\keys\private.pem ^
+      --iface Ethernet ^
+      --ec ^
+      --log-file decoder.log
+
+  Options:
+    --priv-key   Your private key (PEM file) — required
+    --iface      Interface to listen on (e.g. "Ethernet", "Wi-Fi")
+                 If omitted, scapy uses the default interface.
+    --ec         Use ECIES mode (must match what sender used)
+    --host       Host IP to bind to (usually not needed on Windows)
+    --log-file   Also write decrypted IPs to a log file
+
+  Output:
+    [14:23:01] Decoy: 10.99.99.99 → 10.0.0.2 | Real: 192.168.1.42 (ECIES)
+
+  Press Ctrl-C to stop.
+
+  IMPORTANT: Run as Administrator. Without admin, scapy cannot capture packets.
+
+Option B — Run as Windows Service (auto-start, background, persistent):
+  See the "WINDOWS SERVICE" section below.
+
+================================================================================
+WINDOWS SERVICE — Auto-start Background Decoder
+================================================================================
+
+The ip_mask_service.py script installs the decoder as a Windows Service that
+starts automatically on boot and runs in the background.
+
+PREREQUISITES:
+  - pywin32:  pip install pywin32
+  - Run ALL service commands as Administrator
+  - Npcap installed (for packet capture)
+  - Private key exists at the configured path
+
+SERVICE CONFIGURATION:
+  Edit the defaults in ip_mask_service.py (DEFAULT_CONFIG dict) or set
+  environment variables BEFORE installing the service:
+
+    set PRIV_KEY_PATH=C:\ip-mask\keys\private.pem
+    set HOST_IP=0.0.0.0
+    set ENC_MODE=ec
+    set LOG_FILE=C:\ip-mask\decoder.log
+    set IFACE=Ethernet
+    set SCRIPT_PATH=C:\ip-mask\ip_mask_windows.py
+
+  Or edit these lines in ip_mask_service.py:
+    DEFAULT_CONFIG = {
+        "PRIV_KEY_PATH": r"C:\ip-mask\keys\private.pem",
+        "HOST_IP": "0.0.0.0",
+        "ENC_MODE": "ec",
+        "LOG_FILE": "",
+        "IFACE": "",
+        "SCRIPT_PATH": "",
+    }
+
+INSTALL THE SERVICE (run as Administrator in an elevated Command Prompt or PowerShell):
+  cd C:\ip-mask
+  python ip_mask_service.py install
+
+START THE SERVICE:
+  python ip_mask_service.py start
+  OR (alternate):
+  net start IPMaskDecoder
+  OR (PowerShell):
+  Start-Service IPMaskDecoder
+
+CHECK STATUS:
+  python ip_mask_service.py debug   # Shows current config + runs a test
+  OR:
+  sc query IPMaskDecoder
+  OR (PowerShell):
+  Get-Service IPMaskDecoder
+
+VIEW LOGS (from the service):
+  - If --log-file was configured, open that file in Notepad
+  - Or view Windows Event Log:
+      eventvwr.msc → Windows Logs → Application → Source: "IPMaskDecoder"
+  - Or use PowerShell:
+      Get-EventLog -LogName Application -Source IPMaskDecoder -Newest 20
+
+STOP THE SERVICE:
+  python ip_mask_service.py stop
+  OR:
+  net stop IPMaskDecoder
+  OR:
+  Stop-Service IPMaskDecoder
+
+REMOVE THE SERVICE:
+  python ip_mask_service.py remove
+  OR:
+  sc delete IPMaskDecoder
+
+RUN IN CONSOLE MODE (no service, for debugging):
+  python ip_mask_service.py run
+  This starts the capture directly in the console window. Press Ctrl-C to stop.
+  Useful for testing before setting up the service.
+
+AUTO-START ON BOOT:
+  The service is set to start automatically when installed. To verify:
+    sc qc IPMaskDecoder
+  The "START_TYPE" should show "AUTO_START".
+
+RESTART AFTER CONFIG CHANGE:
+  1. Edit ip_mask_service.py DEFAULT_CONFIG or set env vars
+  2. python ip_mask_service.py update
+  3. python ip_mask_service.py restart
+  OR:
+    net stop IPMaskDecoder && net start IPMaskDecoder
+
+================================================================================
+HOW AN OBSERVER SEES THE TRAFFIC (Windows or any OS)
+================================================================================
+
+An observer running Wireshark or tcpdump sees:
+  IP 10.99.99.99 → 10.0.0.2  proto=253  length=118
+
+  - Source IP is the decoy (not the real sender)
+  - Protocol 253 is "Experimental" — most tools skip it
+  - Payload is random-looking bytes (no IP pattern visible)
+  - No indication that an IP address is hidden inside
+
+Only the receiver with the private key can extract the real IP.
+
+================================================================================
+EXAMPLE WORKFLOW — Windows Sender + Linux Receiver
+================================================================================
+
+SCENARIO: Windows machine sends masked packets, Linux machine receives/decrypts.
+
+--- On the Linux Receiver ---
+1. Generate keys:
+   python3 ip_mask.py generate-keys --type ec --out /home/hermes/keys
+
+2. Install the systemd service (see Linux guide or install-ip-mask-service.sh):
+   sudo bash install-ip-mask-service.sh
+
+3. Copy public.pem to the Windows sender machine.
+
+--- On the Windows Sender ---
+1. Install prerequisites (see PREREQUISITES section above).
+
+2. Copy public.pem to a working folder, e.g. C:\ip-mask\keys\public.pem
+
+3. Build and save packets to pcap:
+   python ip_mask_windows.py save ^
+       --dst 10.0.0.2 ^
+       --decoy 10.99.99.99 ^
+       --real-ip 192.168.1.42 ^
+       --pub-key C:\ip-mask\keys\public.pem ^
+       --out C:\ip-mask\packets.pcap ^
+       --count 10 ^
+       --decoy-pool "10.99.99.99,10.88.88.88,172.16.0.1" ^
+       --ec
+
+4. Replay the pcap from a Linux machine on the network path:
+   sudo tcpreplay -i eth0 /path/to/packets.pcap
+
+   OR replay from Windows if you have tcpreplay for Windows:
+   tcpreplay.exe -i Ethernet C:\ip-mask\packets.pcap
+
+5. On the Linux receiver, check decrypted IPs:
+   journalctl -u ip-mask-decoder -f
+
+--- Alternative: Windows Sender sends LIVE ---
+1. On Windows (as Administrator):
+   python ip_mask_windows.py send ^
+       --dst 10.0.0.2 ^
+       --decoy 10.99.99.99 ^
+       --real-ip 192.168.1.42 ^
+       --pub-key C:\ip-mask\keys\public.pem ^
+       --iface Ethernet ^
+       --ec
+
+2. On Linux receiver:
+   journalctl -u ip-mask-decoder -f
+
+================================================================================
+EXAMPLE WORKFLOW — All-Windows Setup
+================================================================================
+
+SCENARIO: Both sender and receiver are Windows machines.
+
+--- On the Windows Receiver ---
+1. Install Python + cryptography + scapy + Npcap (as Administrator).
+
+2. Generate keys:
+   python ip_mask_windows.py generate-keys --type ec --out .\keys
+
+3. Copy private.pem somewhere safe. Distribute public.pem to senders.
+
+4. Install the Windows Service:
+   a. Edit ip_mask_service.py DEFAULT_CONFIG to point to your key:
+        "PRIV_KEY_PATH": r"C:\ip-mask\keys\private.pem"
+   b. Run as Administrator:
+        python ip_mask_service.py install
+        python ip_mask_service.py start
+
+5. Check it's running:
+   sc query IPMaskDecoder
+   Get-EventLog -LogName Application -Source IPMaskDecoder -Newest 5
+
+--- On the Windows Sender ---
+1. Install Python + cryptography + scapy + Npcap (as Administrator).
+
+2. Copy the receiver's public.pem.
+
+3. Send a live packet (as Administrator):
+   python ip_mask_windows.py send ^
+       --dst 10.0.0.2 ^
+       --decoy 10.99.99.99 ^
+       --real-ip 192.168.1.42 ^
+       --pub-key .\keys\public.pem ^
+       --iface Ethernet ^
+       --ec
+
+4. On the Windows Receiver, check the log file (if configured) or Event Log:
+   type C:\ip-mask\decoder.log
+   OR
+   Get-EventLog -LogName Application -Source IPMaskDecoder -Newest 5
+
+================================================================================
+TROUBLESHOOTING — Windows
+================================================================================
+
+"PermissionError" or "Access denied" on send/capture:
+  → You must run as Administrator. Right-click your terminal and select
+    "Run as administrator", then run the command again.
+
+"ModuleNotFoundError: No module named 'scapy'":
+  → Install scapy:  pip install scapy
+  → Then install Npcap from https://npcap.com/#install
+
+"No module named 'win32service':
+  → Install pywin32:  pip install pywin32
+  → If it still fails, run:  python Scripts\pywin32_postinstall.py -install
+    (from your Python installation directory)
+
+"Npcap not found" or packets not captured:
+  → Verify Npcap is installed: check "C:\Program Files\Npcap"
+  → Reinstall Npcap as Administrator, ensuring "WinPcap API-compatible Mode"
+    and "Loopback Adapter" are checked.
+  → Make sure you're running as Administrator.
+
+"Interface not found" on send/capture:
+  → Find the correct interface name:
+      python -c "from scapy.all import conf; [print(i['name']) for i in conf.ifaces.values()]"
+  → Use the exact name (e.g. "Ethernet", "Wi-Fi", "Local Area Connection* 1")
+  → Or omit --iface to use the default interface.
+
+"No packets captured" on receiver:
+  → Verify sender and receiver are on the same network.
+  → Check Windows Firewall isn't blocking protocol 253 (unlikely, but try
+    temporarily disabling the firewall for testing).
+  → Try a TCP/UDP ping to confirm basic connectivity.
+  → Use Wireshark with filter "proto 253" to see if packets arrive at all.
+
+"Wrong key" or decryption fails:
+  → Sender and receiver must use matching mode (both --ec or both RSA).
+  → Verify you're using the correct private key (the one matching the
+    public key the sender used).
+
+Service won't start / sticks in STOP_PENDING:
+  → Check the Event Log for error details.
+  → Try running in console mode first: python ip_mask_service.py run
+  → Make sure the private key file exists at the configured path.
+  → Make sure scapy + Npcap are installed.
+
+Service starts but captures nothing:
+  → The service runs as SYSTEM account. Make sure Npcap allows SYSTEM to
+    capture (it should by default).
+  → Try specifying --iface explicitly in the config.
+  → Check Windows Firewall.
+
+================================================================================
+FILE LIST
+================================================================================
+
+/ip_mask_windows.py              Main cross-platform tool (Windows + Linux)
+/ip_mask_windows_source.txt      Source code copy
+/ip_mask_service.py              Windows Service wrapper
+/ip_mask_service_source.txt      Service script source code copy
+/IP_MASK_USAGE.txt               General usage guide (Linux-focused)
+/ip_mask.py                      Linux-only version (raw sockets, systemd)
+/ip_mask_decoder.service         Linux systemd unit file
+/ip-mask-decoder.conf            Linux service config
+/install-ip-mask-service.sh      Linux install script
+
+================================================================================
