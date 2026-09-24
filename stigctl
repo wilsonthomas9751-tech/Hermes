@@ -18,6 +18,11 @@
 # directly as the --ds argument if they are a valid SCAP data stream, or via
 # STIG Viewer for manual review. For automated remediation, the scap-security-
 # guide content is the most complete option.
+#
+# fetch  —  Pull the latest SCAP Security Guide data stream from GitHub, auto-
+#            detect the target OS, extract the matching data stream, and verify
+#            the SHA-512 checksum.  Use this to always work against the newest
+#            STIG content without manually hunting for download links.
 #===============================================================================
 # IMPORTANT: Never run 'remediate' without first reviewing the generated script.
 #            STIG hardening can break services, lock out remote access, etc.
@@ -52,6 +57,20 @@ check_oscap() {
   Fedora:         dnf install openscap-scanner"
     fi
 }
+check_fetch_tools() {
+    # fetch needs: curl, jq, unzip, sha512sum
+    local missing=()
+    for tool in curl jq unzip sha512sum; do
+        if ! command -v "$tool" &>/dev/null; then
+            missing+=("$tool")
+        fi
+    done
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        die "Missing required tools for fetch: ${missing[*]}.
+  Debian/Ubuntu:  apt-get install curl jq unzip coreutils
+  RHEL/CentOS:    dnf install curl jq unzip sha256sum  (coreutils provides sha512sum)"
+    fi
+}
 check_ds() {
     if [[ -z "$DS" ]]; then
         die "No data stream specified. Use --ds <path-to-scap-ds.xml>"
@@ -79,7 +98,8 @@ Commands:
   remediate    Scan and apply fixes in one pass (DANGEROUS — requires --yes).
   generate     Generate remediation script for ALL rules in profile (no scan).
   list-profiles List available XCCDF profiles in the data stream.
-  info         Show data-stream metadata (title, version, profiles).
+  info         Show data-stream metadata.
+  fetch        Download latest SCAP Security Guide data stream from GitHub.
 
 Options:
   --profile <id>        XCCDF profile name or ID (default: "stig")
@@ -91,23 +111,25 @@ Options:
   --report <htmlfile>   Also produce an HTML report
   --extra "..."         Extra args forwarded to oscap xccdf eval
   --yes                 required for 'remediate' (acknowledge risk)
+  --target-os <id>      OS ID for fetch (e.g. rhel9, ubuntu2404, debian12).
+                        Auto-detected if omitted.
+  --output-dir <dir>    Directory to write fetched data stream (default: ./stig-data)
+  --no-verify           Skip SHA-512 checksum verification (not recommended)
   -h, --help            Show this help
 
 Examples:
   # List profiles in the RHEL 8 STIG data stream
   $(basename "$0") list-profiles --ds /usr/share/xml/scap/ssg/content/ssg-rhel8-ds.xml
 
-  # Scan against the STIG profile, save results
-  $(basename "$0") scan --ds ssg-rhel8-ds.xml --profile stig --results my-scan.xml
+  # Download latest STIG content for this system's OS, then scan
+  $(basename "$0") fetch --target-os debian13
+  $(basename "$0") scan --ds stig-data/ssg-debian13-ds.xml --profile stig
 
-  # Safe mode: scan → generate reviewable bash script
-  $(basename "$0") plan --ds ssg-rhel8-ds.xml --profile stig --fix-type bash
+  # Fetch for a specific OS and put it in a custom directory
+  $(basename "$0") fetch --target-os rhel9 --output-dir /opt/stig
 
-  # Generate a remediation script for ALL rules without scanning
-  $(basename "$0") generate --ds ssg-rhel8-ds.xml --profile stig --fix-type ansible
-
-  # Apply remediation during scan (REVIEW FIRST!)
-  $(basename "$0") remediate --ds ssg-rhel8-ds.xml --profile stig --yes
+  # Fetch everything (all OS data streams) — large download
+  $(basename "$0") fetch --output-dir /opt/stig/all
 EOF
     exit 0
 }
@@ -116,18 +138,25 @@ parse_args() {
     local cmd="$1"; shift
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --profile)   PROFILE="$2"; shift 2 ;;
-            --ds)        DS="$2"; shift 2 ;;
-            --fix-type)  FIX_TYPE="$2"; shift 2 ;;
-            --output)    OUTPUT_SCRIPT="$2"; shift 2 ;;
-            --results)   RESULTS_FILE="$2"; shift 2 ;;
-            --report)    REPORT_FILE="$2"; shift 2 ;;
-            --extra)     SCAN_ARGS="$2"; shift 2 ;;
-            --yes)       YES=true; shift ;;
-            -h|--help)   usage ;;
-            *)           die "Unknown option: $1" ;;
+            --profile)    PROFILE="$2";        shift 2 ;;
+            --ds)         DS="$2";            shift 2 ;;
+            --fix-type)   FIX_TYPE="$2";      shift 2 ;;
+            --output)     OUTPUT_SCRIPT="$2"; shift 2 ;;
+            --results)    RESULTS_FILE="$2";  shift 2 ;;
+            --report)     REPORT_FILE="$2";   shift 2 ;;
+            --extra)      SCAN_ARGS="$2";     shift 2 ;;
+            --yes)        YES=true;           shift ;;
+            --target-os)  TARGET_OS="$2";     shift 2 ;;
+            --output-dir) FETCH_DIR="$2";     shift 2 ;;
+            --no-verify)  NO_VERIFY=true;     shift ;;
+            -h|--help)    usage ;;
+            *)            die "Unknown option: $1" ;;
         esac
     done
+
+    # Defaults for fetch
+    [[ -z "${FETCH_DIR:-}" ]] && FETCH_DIR="./stig-data"
+    [[ -z "${NO_VERIFY:-}" ]] && NO_VERIFY=false
 
     # Command-specific validation
     case "$cmd" in
@@ -139,6 +168,9 @@ parse_args() {
             ;;
         list-profiles|info)
             check_oscap; check_ds
+            ;;
+        fetch)
+            check_fetch_tools
             ;;
         *) die "Unknown command: $cmd" ;;
     esac
@@ -239,6 +271,150 @@ cmd_remediate() {
 }
 
 #-------------------------------------------------------------------------------
+# OS detection helpers (used by fetch)
+#-------------------------------------------------------------------------------
+detect_os() {
+    # Returns an SSG-style OS identifier like "debian12", "rhel9", "ubuntu2404"
+    if [[ ! -f /etc/os-release ]]; then
+        die "Cannot auto-detect OS: /etc/os-release not found. Use --target-os."
+    fi
+    local id variant version
+    id="$(grep -oP '^ID=[\"'\'']*\K[^"'\'']+' /etc/os-release | tr '[:upper:]' '[:lower:]')"
+    variant="$(grep -oP '^ID_LIKE=[\"'\'']*\K[^"'\'']+' /etc/os-release | tr '[:upper:]' '[:lower:]' || true)"
+    version="$(grep -oP '^VERSION_ID=[\"'\'']*\K[^"'\'']+' /etc/os-release || true)"
+
+    case "$id" in
+        debian)
+            echo "debian${version:-unknown}"
+            ;;
+        ubuntu)
+            echo "ubuntu${version:-unknown}"
+            ;;
+        rhel|centos|rocky|almalinux|ol|oraclelinux|fedora)
+            echo "${id}${version:-unknown}"
+            ;;
+        *)
+            # Try ID_LIKE for derivative distros
+            if [[ -n "$variant" ]]; then
+                case "$variant" in
+                    debian) echo "debian${version:-unknown}" ;;
+                    ubuntu) echo "ubuntu${version:-unknown}" ;;
+                    rhel)   echo "rhel${version:-unknown}" ;;
+                    *)      die "Unable to map OS '$id' (ID_LIKE=$variant) to an SSG data stream. Use --target-os." ;;
+                esac
+            else
+                die "Unable to map OS '$id' to an SSG data stream. Use --target-os."
+            fi
+            ;;
+    esac
+}
+
+ssg_download_url() {
+    # $1 = release tag (e.g. v0.1.82), $2 = filename (e.g. ssg-rhel9-ds.xml)
+    local tag="$1" base="${2%.xml}"
+    echo "https://github.com/ComplianceAsCode/content/releases/download/${tag}/scap-security-guide-${tag}.zip"
+    # The data stream lives inside the zip at: scap-security-guide-<tag>/<filename>
+}
+
+#-------------------------------------------------------------------------------
+# fetch — download latest SSG data stream from GitHub
+#-------------------------------------------------------------------------------
+cmd_fetch() {
+    local os_id="${TARGET_OS:-}"
+    local out_dir="${FETCH_DIR:-}"
+    local verify="${NO_VERIFY:-}"
+
+    # Auto-detect if not specified
+    if [[ -z "$os_id" ]]; then
+        blue "Auto-detecting target OS from /etc/os-release ..."
+        os_id="$(detect_os)"
+        green "Detected OS: $os_id"
+    fi
+
+    # Sanity: does this look like an SSG data stream name?
+    if [[ "$os_id" != *"-ds.xml" ]] && [[ "$os_id" != *ssg-* ]]; then
+        # Assume it's an OS identifier like "debian12" or "rhel9"
+        os_id="ssg-${os_id}-ds.xml"
+    fi
+
+    green "Fetching latest SCAP Security Guide data stream for: $os_id"
+
+    # Phase 1: find latest release via GitHub API
+    blue "Querying GitHub API for latest ComplianceAsCode/content release ..."
+    local release_json
+    release_json="$(curl -sSfL "https://api.github.com/repos/ComplianceAsCode/content/releases/latest" 2>/dev/null)"
+    if [[ -z "$release_json" ]]; then
+        die "Failed to query GitHub API. Check network connectivity."
+    fi
+    local tag_name download_url
+    tag_name="$(echo "$release_json" | jq -r '.tag_name // empty')"
+    if [[ -z "$tag_name" || "$tag_name" == "null" ]]; then
+        die "Unexpected GitHub API response: $(echo "$release_json" | jq -r '.message // "no tag_name"')"
+    fi
+    # Strip leading 'v' from tag name for use in filenames/URLs
+    local version="${tag_name#v}"
+    green "Latest release: $tag_name (version: $version)"
+
+    # Phase 2: download the ZIP
+    local zip_name="scap-security-guide-${version}.zip"
+    local zip_url="https://github.com/ComplianceAsCode/content/releases/download/${tag_name}/${zip_name}"
+    local sha_name="scap-security-guide-${version}.zip.sha512"
+    local sha_url="https://github.com/ComplianceAsCode/content/releases/download/${tag_name}/${sha_name}"
+
+    blue "Downloading $zip_name (~30-50 MB, may take a moment) ..."
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    local zip_path="$tmp_dir/$zip_name"
+    local sha_path="$tmp_dir/$sha_name"
+
+    curl -sSfL "$zip_url" -o "$zip_path" || die "Download failed: $zip_url"
+    curl -sSfL "$sha_url" -o "$sha_path" || die "Checksum download failed: $sha_url"
+    green "Downloaded $zip_name and $sha_name"
+
+    # Phase 3: verify SHA-512 (unless --no-verify)
+    if [[ "$verify" != "true" ]]; then
+        blue "Verifying SHA-512 checksum ..."
+        local expected actual
+        expected="$(cat "$sha_path" | awk '{print $1}')"
+        actual="$(sha512sum "$zip_path" | awk '{print $1}')"
+        if [[ "$expected" != "$actual" ]]; then
+            die "SHA-512 mismatch!
+  expected: $expected
+  actual:   $actual
+The download may be corrupted or tampered with. Do not use this file."
+        fi
+        green "Checksum verified OK."
+    else
+        yellow "Skipping checksum verification (--no-verify)."
+    fi
+
+    # Phase 4: extract the requested data stream
+    blue "Extracting $os_id from archive ..."
+    mkdir -p "$out_dir"
+    unzip -q -o "$zip_path" -d "$tmp_dir" || die "Failed to extract ZIP."
+
+    local ds_source="$tmp_dir/${zip_name%.zip}/$os_id"
+    if [[ ! -f "$ds_source" ]]; then
+        # List what we actually have
+        yellow "Requested data stream '$os_id' not found in archive."
+        yellow "Available data streams (first 20):"
+        find "$tmp_dir/${zip_name%.zip}" -name "*-ds.xml" | head -20 | while read -r f; do
+            echo "  $(basename "$f")"
+        done
+        die "Cannot continue. Use --target-os with one of the above names."
+    fi
+
+    local ds_dest="$out_dir/$os_id"
+    cp "$ds_source" "$ds_dest"
+    green "Data stream written to: $ds_dest"
+    green "Ready to scan: $(basename "$0") scan --ds $ds_dest --profile stig"
+
+    # Phase 5: cleanup
+    rm -rf "$tmp_dir"
+    green "Done."
+}
+
+#-------------------------------------------------------------------------------
 # Main
 #-------------------------------------------------------------------------------
 main() {
@@ -261,6 +437,7 @@ main() {
         generate)     cmd_generate ;;
         list-profiles) cmd_list_profiles ;;
         info)         cmd_info ;;
+        fetch)        cmd_fetch ;;
         *)            die "Unknown command: $cmd" ;;
     esac
 }
