@@ -204,6 +204,194 @@ Or fetch fresh ones with `stigctl fetch`.
 | `coreutils` | Provides `sha512sum` for checksum verification (fetch command) | Pre-installed on most distros |
 | `sudo` / root access | Required for running oscap scans and applying remediations | Pre-installed |
 
+## Windows STIG Automation (`stigctl.ps1`)
+
+A companion PowerShell script for Windows Server and Windows Client STIG compliance,
+built on **Microsoft PowerSTIG** (DSC-based STIG automation from the PowerShell Gallery).
+
+### What it does
+
+| Command | Description |
+|---|---|
+| `Install-PowerStig` | Install PowerSTIG + dependencies from PowerShell Gallery |
+| `List-Stigs` | List all STIGs and versions available in the PowerSTIG module |
+| `Generate-Config` | Generate a DSC configuration `.ps1` for a target STIG (OS version, role, STIG version, exceptions, skips) |
+| `Compile-Config` | Dot-source and compile a generated `.ps1` to a `.mof` file |
+| `Audit` | Run `Test-DscConfiguration` against a MOF — shows compliant and non-compliant settings |
+| `Remediate` | Apply a MOF via `Start-DscConfiguration` (enforces STIG settings — reviewed first) |
+| `Get-Status` | Show current DSC configuration status on the local machine |
+| `Get-RuleHelp` | Show detailed help for a specific STIG rule ID (e.g. `V-73487`) |
+| `Show-GpoRules` | List rules that are GPO-based (require manual Group Policy, not DSC) |
+| `Fetch-DisaStig` | Print DISA STIG download URLs from `public.cyber.mil/stigs/downloads` |
+
+### Architecture — Windows STIGs are not Linux STIGs
+
+Windows STIGs are mostly **Group Policy (GPO)** and **registry settings**, not shell commands. There is no OpenSCAP equivalent for native Windows STIGs. The automation path is:
+
+```
+DISA STIG XCCDF → PowerSTIG parses XCCDF → DSC composite resources → Compile MOF
+                                                              ↓
+                                        Audit: Test-DscConfiguration
+                                        Remediate: Start-DscConfiguration
+```
+
+PowerSTIG ships pre-processed STIG data (XML files in the module's `StigData/Processed` folder) that drives DSC resource generation. It handles rules that are automatable via DSC. Rules that are GPO-only or manual-observation-only are flagged by `Show-GpoRules` and `Generate-Config` so you know what needs manual application.
+
+### Installation (PowerShell on Windows)
+
+```powershell
+# Run PowerShell as Administrator
+
+# Install PowerSTIG from PowerShell Gallery
+Install-Module -Name PowerSTIG -Scope CurrentUser -Force -AcceptLicense
+
+# Or use stigctl.ps1:
+.\stigctl.ps1 -Command Install-PowerStig
+```
+
+### Workflow
+
+```powershell
+# 1. Install PowerSTIG
+.\stigctl.ps1 -Command Install-PowerStig
+
+# 2. List available STIGs
+.\stigctl.ps1 -Command List-Stigs
+
+# 3. Generate a DSC config for Windows Server 2022 Member Server STIG v2.6
+.\stigctl.ps1 -Command Generate-Config -CommandArgs @{
+    Technology  = 'WindowsServer'
+    OsVersion   = '2022'
+    OsRole      = 'MS'          # MS = Member Server, DC = Domain Controller
+    StigVersion = '2.6'
+    OutputPath  = '.\WindowsServer-2022-MS-2.6.ps1'
+}
+
+# 4. Review the generated .ps1, then compile to MOF
+.\stigctl.ps1 -Command Compile-Config -CommandArgs @{ ConfigPath = '.\WindowsServer-2022-MS-2.6.ps1' }
+
+# 5. Audit the local system (run as Administrator)
+.\stigctl.ps1 -Command Audit -CommandArgs @{ MofPath = '.\localhost.mof' }
+
+# 6. If audit looks good, remediate (run as Administrator — CHANGES SETTINGS)
+.\stigctl.ps1 -Command Remediate -CommandArgs @{ MofPath = '.\localhost.mof' }
+```
+
+### Handling GPO-only and manual rules
+
+```powershell
+# List rules that require manual Group Policy application
+.\stigctl.ps1 -Command Show-GpoRules -CommandArgs @{
+    Technology  = 'WindowsServer'
+    OsVersion   = '2022'
+    OsRole      = 'MS'
+    StigVersion = '2.6'
+}
+
+# Apply GPO rules manually via:
+#   • Group Policy Management Console (gpmc.msc) — domain-joined
+#   • LGPO.exe — standalone / workgroup systems
+#   • PowerShell: New-GPO -Name "STIG Baseline" | Set-GPPref...
+```
+
+### Exceptions and skips
+
+```powershell
+# Override a specific rule (e.g. V-1075 must be 1 instead of 0)
+.\stigctl.ps1 -Command Generate-Config -CommandArgs @{
+    Technology  = 'WindowsServer'
+    OsVersion   = '2022'
+    OsRole      = 'MS'
+    StigVersion = '2.6'
+    Exception   = @{ 'V-1075' = @{ ValueData = 1 } }
+}
+
+# Skip a specific rule
+.\stigctl.ps1 -Command Generate-Config -CommandArgs @{
+    Technology  = 'WindowsServer'
+    OsVersion   = '2022'
+    OsRole      = 'MS'
+    StigVersion = '2.6'
+    SkipRule    = 'V-253261'
+}
+
+# Skip an entire class of rules (e.g. AuditPolicyRule)
+.\stigctl.ps1 -Command Generate-Config -CommandArgs @{
+    Technology    = 'WindowsServer'
+    OsVersion     = '2022'
+    OsRole        = 'MS'
+    StigVersion   = '2.6'
+    SkipRuleType  = 'AuditPolicyRule'
+}
+```
+
+### Rule help
+
+```powershell
+.\stigctl.ps1 -Command Get-RuleHelp -CommandArgs @{ RuleId = 'V-73487' }
+```
+
+### Getting the DISA STIG package (manual)
+
+DISA's STIG downloads page (`public.cyber.mil/stigs/downloads/`) is a JavaScript SPA and cannot be scraped programmatically. Download manually:
+
+```powershell
+.\stigctl.ps1 -Command Fetch-DisaStig
+```
+
+This prints the current download URLs for all supported Windows STIGs. The ZIP packages contain:
+- `*-Manual-xccdf.xml` — the XCCDF benchmark (for STIG Viewer / SCAP scanners)
+- `*-OVAL.xml` — OVAL definitions
+- Supporting files (PowerShell scripts for some rules, DoD EP XML, etc.)
+
+These are used by STIG Viewer for compliance scoring. PowerSTIG's embedded STIG data is the primary automation path; DISA downloads supplement with manual GPO checklists and OVAL scanning.
+
+### Supported STIGs in PowerSTIG
+
+PowerSTIG covers (version-dependent, check `List-Stigs` for what's installed):
+
+- `WindowsServer` — 2016, 2019, 2022, 2025 (MS and DC roles)
+- `WindowsClient` — Windows 10, Windows 11
+- `WindowsFirewall`
+- `WindowsDnsServer`
+- `WindowsDefender`
+- `IisServer`, `IisSite`
+- `SqlServer` — 2016, 2019, 2022
+- `DotNetFramework`
+- `Edge`, `Chrome`, `Firefox`, `InternetExplorer`
+- `Microsoft Office` / `Office 365 ProPlus`
+- And more (check `List-Stigs`)
+
+### Safety
+
+- **Review the generated .ps1 before compiling.** DSC remediation changes registry keys, GPO settings, service configurations, and more.
+- **`Remediate` requires confirmation.** The script prompts before applying a MOF.
+- **Run as Administrator** for audit and remediate operations.
+- **Some changes require reboot.** The script warns about this.
+- **GPO rules are not automatable via DSC.** Apply them via Group Policy Management or LGPO.exe.
+- **Test on a non-production system first.**
+
+### Requirements
+
+| Component | Purpose | Install |
+|---|---|---|
+| `PowerSTIG` (PowerShell module) | DSC composite resources for STIG rules | `Install-Module -Name PowerSTIG -Scope CurrentUser` |
+| `PSDscResources` | Built-in DSC resources (Registry, File, WindowsFeature, etc.) | Auto-installed as PowerSTIG dependency |
+| `Windows PowerShell 5.1` or `PowerShell 7+` | DSC support | Pre-installed on Windows Server |
+| Administrator rights | DSC audit/remediation | Run PowerShell as Administrator |
+| WinRM (optional) | Remote DSC application | `Enable-PSRemoting -Force` |
+
+### Differences from Linux `stigctl`
+
+| Aspect | Linux `stigctl` | Windows `stigctl.ps1` |
+|---|---|---|
+| Scanning engine | OpenSCAP (`oscap`) | PowerSTIG DSC (`Test-DscConfiguration`) |
+| Content source | SCAP Security Guide GitHub releases | PowerSTIG PSGallery + DISA STIG downloads |
+| Remediation format | Bash script / Ansible playbook | DSC MOF + `Start-DscConfiguration` |
+| Content fetch | `fetch` downloads SSG ZIP via GitHub API | `Install-PowerStig` from PSGallery; DISA downloads are manual |
+| Rule coverage | Mostly automatable via bash | Mix of DSC-automatable, GPO-manual, and audit-only |
+| Checksums | SHA-512 verification of downloads | PowerShell Gallery module signature verification |
+
 ## License
 
 MIT
