@@ -434,9 +434,9 @@ detect_os() {
         die "Cannot auto-detect OS: /etc/os-release not found. Use --target-os."
     fi
     local id variant version
-    id=$(grep -oP '^ID=[\"\'']*\K[^\"\'\\'']+' /etc/os-release | tr '[:upper:]' '[:lower:]')
-    variant=$(grep -oP '^ID_LIKE=[\"\'']*\K[^\"\'\\'']+' /etc/os-release | tr '[:upper:]' '[:lower:]' || true)
-    version=$(grep -oP '^VERSION_ID=[\"\'']*\K[^\"\'\\'']+' /etc/os-release || true)
+    id=$(grep -oP '^ID=.*' /etc/os-release | cut -d= -f2 | tr -d '"' | tr '[:upper:]' '[:lower:]')
+    variant=$(grep -oP '^ID_LIKE=.*' /etc/os-release | cut -d= -f2 | tr -d '"' | tr '[:upper:]' '[:lower:]' || true)
+    version=$(grep -oP '^VERSION_ID=.*' /etc/os-release | cut -d= -f2 | tr -d '"' || true)
 
     case "$id" in
         debian)
