@@ -150,9 +150,9 @@ resolve_profile() {
         return 0
     fi
 
-    # Query the data stream
+    # Query profiles from the data stream via Python XML parsing
     local profiles
-    profiles=$(oscap xccdf info --profiles "$ds" 2>/dev/null) || true
+    profiles=$(extract_profiles "$ds" 2>/dev/null) || true
 
     if [[ -z "$profiles" ]]; then
         # Fallback: common full IDs
@@ -397,23 +397,29 @@ cmd_list_profiles() {
 cmd_info() {
     blue "Data stream info: $DS"
 
-    # Try oscap info first (may work in some versions)
-    local oscap_info
-    oscap_info=$(oscap info "$DS" 2>/dev/null) || true
+    # Extract metadata via Python XML parsing (no oscap dependency)
+    local ds_id status profile_count
+    ds_id=$(python3 - "$DS" << 'PYEOF' 2>/dev/null
+import xml.etree.ElementTree as ET
+import sys
+try:
+    t = ET.parse(sys.argv[1]).getroot()
+    print(t.get('id', '(unknown)'))
+except: print('(unknown)')
+PYEOF
+)
+    status=$(grep -oP '<status[^>]*>\K[^<]+' "$DS" 2>/dev/null || echo '(unknown)')
+    profile_count=$(grep -c '<Profile ' "$DS" 2>/dev/null || echo '0')
 
-    if [[ -n "$oscap_info" ]]; then
-        echo "$oscap_info"
-    else
-        # Fall back to basic XML metadata extraction
-        echo "Title: $(grep -oP '<status[^>]*>\K[^<]+' "$DS" 2>/dev/null || echo '(unknown)')"
-        echo "Profiles: $(grep -c '<Profile ' "$DS" 2>/dev/null || echo '0')"
-        echo ""
-        echo "Full profile list:"
-        extract_profiles "$DS" | while read -r pid ptitle; do
-            [[ -z "$pid" ]] && continue
-            printf "  %-40s %s\n" "$pid" "$ptitle"
-        done
-    fi
+    echo "Data stream ID: $ds_id"
+    echo "Status:        $status"
+    echo "Profiles:      $profile_count"
+    echo ""
+    echo "Profiles:"
+    extract_profiles "$DS" | while read -r pid ptitle; do
+        [[ -z "$pid" ]] && continue
+        printf "  %-40s %s\n" "$pid" "$ptitle"
+    done
 }
 
 cmd_scan() {
@@ -433,7 +439,7 @@ cmd_scan() {
         green "Results -> $RESULTS_FILE"
     fi
 
-    sudo oscap "${eval_args[@]}"
+    oscap "${eval_args[@]}"
     green "Scan complete."
 }
 
@@ -462,7 +468,7 @@ cmd_plan() {
     [[ -n "$SCAN_ARGS" ]] && eval_args+=($SCAN_ARGS)
     eval_args+=($DS)
 
-    sudo oscap "${eval_args[@]}"
+    oscap "${eval_args[@]}"
     green "Scan complete -> $RESULTS_FILE"
 
     green "=== Phase 2: Generating remediation script ==="

@@ -84,8 +84,8 @@ sudo stigctl fix-cpe
 # 3. Find available profiles
 ./stigctl list-profiles --ds stig-data/ssg-debian12-ds.xml
 
-# 4. Scan (safe)
-sudo ./stigctl scan --ds stig-data/ssg-debian12-ds.xml --profile stig --report report.html
+# 4. Scan (safe — no sudo needed for read-only evaluation)
+./stigctl scan --ds stig-data/ssg-debian12-ds.xml --profile stig --report report.html
 
 # 5. Generate a reviewable remediation script
 ./stigctl plan --ds stig-data/ssg-debian12-ds.xml --profile stig --fix-type bash
@@ -93,7 +93,7 @@ sudo ./stigctl scan --ds stig-data/ssg-debian12-ds.xml --profile stig --report r
 sudo bash stig-remediation.sh
 
 # 6. Re-scan to confirm
-sudo ./stigctl scan --ds stig-data/ssg-debian12-ds.xml --profile stig
+./stigctl scan --ds stig-data/ssg-debian12-ds.xml --profile stig
 ```
 
 ## Fetch — always get the latest STIG content
@@ -235,8 +235,8 @@ Or fetch fresh ones with `stigctl fetch`.
 | `curl` | HTTP downloads (fetch command) | `apt-get install curl` / `dnf install curl` |
 | `jq` | JSON parsing of GitHub API response (fetch command) | `apt-get install jq` / `dnf install jq` |
 | `unzip` | Extract SSG release ZIP (fetch command) | `apt-get install unzip` / `dnf install unzip` |
-| `coreutils` | Provides `sha512sum` for checksum verification (fetch command) | Pre-installed on most distros |
-| `sudo` / root access | Required for running oscap scans and applying remediations | Pre-installed |
+|| `coreutils` | Provides `sha512sum` for checksum verification (fetch command) | Pre-installed on most distros |
+|| `sudo` / root access | Required for **remediation** (live system changes). Scanning (`scan`, `plan`, `list-profiles`, `info`) is read-only and does not need sudo on most systems. | Pre-installed |
 
 ## Windows STIG Automation (`stigctl.ps1`)
 
