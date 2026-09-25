@@ -329,18 +329,91 @@ parse_args() {
 #-------------------------------------------------------------------------------
 # Commands
 #-------------------------------------------------------------------------------
+extract_profiles() {
+    # Extract profile IDs and titles from an XCCDF data stream using Python XML parsing.
+    # Output format: "profile_id  profile_title"
+    local ds="$1"
+
+    python3 - "$ds" << 'PYEOF'
+import xml.etree.ElementTree as ET
+import sys
+
+ds_path = sys.argv[1] if len(sys.argv) > 1 else None
+if ds_path is None:
+    sys.exit(1)
+
+try:
+    tree = ET.parse(ds_path)
+except Exception as e:
+    print(f"ERROR: Cannot parse {ds_path}: {e}", file=sys.stderr)
+    sys.exit(1)
+
+root = tree.getroot()
+
+# Try with namespace first
+ns = '{http://checklists.nist.gov/xccdf/1.2}'
+found = False
+for p in root.iter(ns + 'Profile'):
+    pid = p.get('id', '')
+    title_el = p.find(ns + 'title')
+    title = title_el.text if title_el is not None else '(no title)'
+    if pid:
+        print(f'{pid}  {title}')
+        found = True
+
+if not found:
+    # Try without namespace
+    for p in root.iter('Profile'):
+        pid = p.get('id', '')
+        title_el = p.find('title')
+        title = title_el.text if title_el is not None else '(no title)'
+        if pid:
+            print(f'{pid}  {title}')
+PYEOF
+}
+
 cmd_list_profiles() {
     blue "Available XCCDF profiles in: $DS"
-    RESOLVED_PROFILE=$(resolve_profile "$DS" "$PROFILE")
-    oscap xccdf info --profiles "$DS" 2>/dev/null | grep -E "^\s+[a-zA-Z0-9]" \
-        || oscap xccdf info --profiles "$DS"
+
+    local profiles
+    profiles=$(extract_profiles "$DS")
+
+    if [[ -z "$profiles" ]]; then
+        red "Could not extract profiles from $DS"
+        red "The data stream may be invalid, or no XCCDF Profile elements found."
+        return 1
+    fi
+
+    echo "$profiles" | while read -r pid ptitle; do
+        [[ -z "$pid" ]] && continue
+        printf "  %-40s %s\n" "$pid" "$ptitle"
+    done
+
     green ""
+    RESOLVED_PROFILE=$(resolve_profile "$DS" "$PROFILE")
     green "To scan, use: $(basename "$0") scan --ds $DS --profile $RESOLVED_PROFILE"
 }
 
 cmd_info() {
     blue "Data stream info: $DS"
-    oscap info "$DS"
+
+    # Try oscap info first (may work in some versions)
+    local oscap_info
+    oscap_info=$(oscap info "$DS" 2>/dev/null) || true
+
+    if [[ -n "$oscap_info" ]]; then
+        echo "$oscap_info"
+    else
+        # Fall back to basic XML metadata extraction
+        echo "Title: $(grep -oP '<status[^>]*>\K[^<]+' "$DS" 2>/dev/null || echo '(unknown)')"
+        echo "Profiles: $(grep -c '<Profile ' "$DS" 2>/dev/null || echo '0')"
+        echo ""
+        echo "Full profile list:"
+        extract_profiles "$DS" | while read -r pid ptitle; do
+            [[ -z "$pid" ]] && continue
+            printf "  %-40s %s\n" "$pid" "$ptitle"
+        done
+    fi
 }
 
 cmd_scan() {
