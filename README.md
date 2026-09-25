@@ -27,8 +27,11 @@ A bash wrapper around **OpenSCAP (`oscap`)** for scanning Linux systems against 
 
 ```bash
 apt-get update
-apt-get install -y openscap-scanner curl jq unzip coreutils
+apt-get install -y openscap-scanner ssg-base ssg-debian ssg-debderived \
+  ssg-nondebian ssg-applications curl jq unzip coreutils
 ```
+
+**Debian note:** The SSG content on Debian is split into multiple packages (`ssg-base`, `ssg-debian`, `ssg-debderived`, `ssg-nondebian`, `ssg-applications`). The `scap-security-guide` name is used on RHEL/Fedora. Also install `curl`, `jq`, `unzip` for the `fetch` command.
 
 ### Install on RHEL / CentOS / Fedora / Rocky / AlmaLinux
 
@@ -63,28 +66,34 @@ sudo chmod +x /usr/local/bin/stigctl
 ```bash
 stigctl --help
 stigctl fetch --help
+
+# Fix the CPE dictionary (Debian/Ubuntu only — run once, requires sudo)
+stigctl fix-cpe
 ```
 
 ## Quick start
 
 ```bash
-# 1. Fetch the latest STIG data stream for this system's OS
+# 1. Fix the CPE dictionary (Debian/Ubuntu only — required before scanning)
+sudo stigctl fix-cpe
+
+# 2. Fetch the latest STIG data stream for this system's OS
 ./stigctl fetch
-# → writes to ./stig-data/ssg-<os>-ds.xml (e.g. ssg-debian13-ds.xml)
+# → writes to ./stig-data/ssg-<os>-ds.xml (e.g. ssg-debian12-ds.xml)
 
-# 2. Find available profiles
-./stigctl list-profiles --ds stig-data/ssg-debian13-ds.xml
+# 3. Find available profiles
+./stigctl list-profiles --ds stig-data/ssg-debian12-ds.xml
 
-# 3. Scan (safe)
-sudo ./stigctl scan --ds stig-data/ssg-debian13-ds.xml --profile stig --report report.html
+# 4. Scan (safe)
+sudo ./stigctl scan --ds stig-data/ssg-debian12-ds.xml --profile stig --report report.html
 
-# 4. Generate a reviewable remediation script
-./stigctl plan --ds stig-data/ssg-debian13-ds.xml --profile stig --fix-type bash
+# 5. Generate a reviewable remediation script
+./stigctl plan --ds stig-data/ssg-debian12-ds.xml --profile stig --fix-type bash
 # → review stig-remediation.sh, then apply:
 sudo bash stig-remediation.sh
 
-# 5. Re-scan to confirm
-sudo ./stigctl scan --ds stig-data/ssg-debian13-ds.xml --profile stig
+# 6. Re-scan to confirm
+sudo ./stigctl scan --ds stig-data/ssg-debian12-ds.xml --profile stig
 ```
 
 ## Fetch — always get the latest STIG content
@@ -118,7 +127,32 @@ sudo ./stigctl scan --ds stig-data/ssg-debian13-ds.xml --profile stig
 
 **OS auto-detection:** reads `/etc/os-release` and maps to SSG data stream names. Supports `debian`, `ubuntu`, `rhel`, `centos`, `rocky`, `almalinux`, `ol`/`oraclelinux`, `fedora`, and derivatives via `ID_LIKE`. Use `--target-os` when auto-detection fails.
 
-**Supported OS data streams** (from SSG releases): `ssg-rhel9-ds.xml`, `ssg-rhel10-ds.xml`, `ssg-ubuntu2404-ds.xml`, `ssg-debian12-ds.xml`, `ssg-debian13-ds.xml`, `ssg-centos8-ds.xml`, `ssg-ol9-ds.xml`, and many more. Use `fetch` with `--target-os` matching one of these names.
+**Supported OS data streams** (from SSG releases): `ssg-rhel9-ds.xml`, `ssg-rhel10-ds.xml`, `ssg-ubuntu2404-ds.xml`, `ssg-debian12-ds.xml`, `ssg-centos8-ds.xml`, `ssg-ol9-ds.xml`, and many more. Use `fetch` with `--target-os` matching one of these names.
+
+**Debian 13 (trixie):** The upstream ComplianceAsCode project does not yet ship SSG content for Debian 13. `stigctl` auto-detects Debian 13 and falls back to `debian12`. Use `--target-os debian12` explicitly if needed.
+
+## CPE Dictionary Fix (Debian/Ubuntu)
+
+The `openscap` package on Debian/Ubuntu has a known packaging bug: it deletes `/usr/share/openscap/cpe/` during build, so oscap cannot find `openscap-cpe-dict.xml` and fails with:
+
+```
+OpenSCAP Error: Unable to open file: /usr/share/openscap/cpe/openscap-cpe-dict.xml
+```
+
+stigctl has two protections against this:
+
+1. **`stigctl fix-cpe`** — run once (requires sudo). Creates the missing directory and symlinks an SSG-provided CPE dictionary if SSG content is installed. If SSG is not installed, it prints the install commands.
+2. **Auto-fix on scan/plan/remediate/generate** — every scanning command calls `fix_cpe` automatically. If it fails, the command continues with a warning (the scan may still work if the data stream bundles its own CPE content).
+
+If `fix-cpe` cannot find an SSG CPE dictionary, you can manually download and place one:
+
+```bash
+sudo mkdir -p /usr/share/openscap/cpe
+# Option A: symlink from SSG (if installed)
+sudo ln -sf /usr/share/xml/scap/ssg/content/ssg-debian12-cpe-dictionary.xml \
+            /usr/share/openscap/cpe/openscap-cpe-dict.xml
+# Option B: use an SSG-provided CPE dict from any installed SSG platform package
+```
 
 ## Fix types
 
